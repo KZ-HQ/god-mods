@@ -7,7 +7,7 @@ Claude Code mods: hooks modules that change Claude's interface and behaviour, pu
 In Claude Code:
 
 ```
-/plugin marketplace add KZ-HQ/god-mod
+/plugin marketplace add KZ-HQ/god-mods
 /plugin install danger-guard@god-mods
 ```
 
