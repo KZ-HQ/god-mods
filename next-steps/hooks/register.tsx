@@ -111,7 +111,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'next' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{next}')
     const arg = e.args.trim()
     if (arg === 'off' || arg === 'on') {
       await $.store.set(OFF_KEY, arg === 'off')

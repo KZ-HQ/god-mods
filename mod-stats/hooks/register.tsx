@@ -106,7 +106,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'mod-stats' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{mod-stats}')
     const args = e.args.trim().split(/\s+/).filter(Boolean)
     const days = Math.max(1, Number(args.find(a => /^\d+$/.test(a)) ?? 7))
     const project = args.includes('here') ? (await $.session.cwd()).split('/').filter(Boolean).pop() : undefined

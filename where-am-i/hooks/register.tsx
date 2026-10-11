@@ -142,7 +142,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'goal' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{goal}')
     const arg = e.args.trim()
     if (arg === 'hide' || arg === 'show') {
       await update($, isHidden, () => arg === 'hide')
@@ -160,7 +160,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'park' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{park}')
     const key = await parkKey($)
     if (e.args.trim() === 'clear') {
       await $.store.delete(key)

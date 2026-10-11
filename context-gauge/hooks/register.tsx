@@ -184,7 +184,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'gauge' }, async $ => {
-    count($, 'command.run')
+    count($, 'command.run{gauge}')
     const hidden = await update($, isHidden, h => !h)
     await $.store.set(HIDDEN_KEY, hidden).catch(() => undefined)
 

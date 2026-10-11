@@ -254,7 +254,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'worktrees' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{worktrees}')
     if (e.args.trim() === 'clean') {
       const lines = await clean($)
 

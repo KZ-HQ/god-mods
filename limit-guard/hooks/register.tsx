@@ -151,7 +151,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'limit' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{limit}')
     const arg = e.args.trim()
     const hit = await readHit($)
 
@@ -179,7 +179,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'limit-guard:resume' }, async ($, e, next) => {
-    count($, 'command.run')
+    count($, 'command.run{limit-guard:resume}')
     const hit = await readHit($)
     await clearHit($)
     const recorded = hit?.agents.length ? `background agents ${hit.agents.map(a => `"${a}"`).join(', ')}` : 'the main turn'

@@ -259,7 +259,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'gate' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{gate}')
     if (e.args.trim() === 'list') {
       const root = await repoRoot($)
       if (!root) return { text: 'gate: not in a git repository.' }

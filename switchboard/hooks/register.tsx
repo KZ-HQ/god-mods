@@ -121,7 +121,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'route' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{route}')
     const arg = e.args.trim()
     if (arg === 'on' || arg === 'observe' || arg === 'off') {
       await $.store.set(MODE_KEY, arg === 'on' ? 'route' : arg)

@@ -8,19 +8,19 @@
       "name": "context-gauge",
       "source": "./context-gauge",
       "description": "Band above the prompt: context fill, last turn's cost, session cost and rate limits; /gauge toggles it",
-      "version": "0.5.0"
+      "version": "0.5.1"
     },
     {
       "name": "danger-guard",
       "source": "./danger-guard",
       "description": "Holds risky shell commands and writes to protected data, previews what they would change, and asks before they run",
-      "version": "0.4.1"
+      "version": "0.4.2"
     },
     {
       "name": "prompt-shaper",
       "source": "./prompt-shaper",
       "description": "Expands your shorthand and attaches git state to each prompt; adds a stable project-toolchain note to the system prompt",
-      "version": "0.3.0"
+      "version": "0.3.1"
     },
     {
       "name": "long-turn-notify",
@@ -32,31 +32,31 @@
       "name": "search-router",
       "source": "./search-router",
       "description": "Steers web search to Exa and scraping to Firecrawl, and fails over when either runs out of credits; /search-router shows status",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     {
       "name": "limit-guard",
       "source": "./limit-guard",
       "description": "Asks before starting agents when the 5h/weekly usage window is nearly spent, records what a usage-limit cut-off stopped, and /limit-guard:resume continues it",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     {
       "name": "worktree-janitor",
       "source": "./worktree-janitor",
       "description": "Lists agent worktrees with their PR state and removes merged ones on your say-so; /worktrees",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     {
       "name": "agent-fleet",
       "source": "./agent-fleet",
       "description": "Pane of running background agents: task, model, elapsed time, tokens, current tool, with a Stop button; /fleet",
-      "version": "0.5.0"
+      "version": "0.5.1"
     },
     {
       "name": "merge-gate",
       "source": "./merge-gate",
       "description": "Holds gh pr merge until CI passes on the PR head; /gate runs the project CI steps locally without a Claude turn",
-      "version": "0.4.1"
+      "version": "0.4.2"
     },
     {
       "name": "secret-scrubber",
@@ -68,7 +68,7 @@
       "name": "switchboard",
       "source": "./switchboard",
       "description": "Picks Haiku, Sonnet or Opus for each subagent from its task; applies picks by default. /route",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     {
       "name": "topic-drift",
@@ -80,24 +80,25 @@
       "name": "test-on-edit",
       "source": "./test-on-edit",
       "description": "When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     {
       "name": "where-am-i",
       "source": "./where-am-i",
       "description": "Band with the session's goal and what Claude is doing; /goal sets it, /park saves where you left off",
-      "version": "0.3.0"
+      "version": "0.3.1"
     },
     {
       "name": "next-steps",
       "source": "./next-steps",
       "description": "Suggests 2-3 likely next prompts after each turn, press 1/2/3 to draft one; /next off",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     {
       "name": "mod-stats",
       "source": "./mod-stats",
-      "description": "/mod-stats [days]: what each mod did, cost and saved"
+      "description": "/mod-stats [days]: what each mod did, cost and saved",
+      "version": "0.2.1"
     }
   ],
   "description": "Claude Code mods by KeithZhu"

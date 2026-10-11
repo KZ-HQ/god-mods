@@ -156,7 +156,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'search-router' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{search-router}')
     if (e.args.trim() === 'reset') {
       status = FRESH
       await $.store.set(STORE_KEY, status)

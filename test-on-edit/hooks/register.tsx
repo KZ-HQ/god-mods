@@ -156,7 +156,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'test-on-edit' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{test-on-edit}')
     const arg = e.args.trim()
     if (arg === 'off' || arg === 'on') isOn = arg === 'on'
 

@@ -175,7 +175,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'fleet' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{fleet}')
     if (e.args.trim() === 'clear') {
       await update($, agents, list => list.filter(a => a.status === 'running'))
 

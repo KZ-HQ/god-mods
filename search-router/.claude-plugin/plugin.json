@@ -1,6 +1,6 @@
 {
   "name": "search-router",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Steers web search to Exa and scraping to Firecrawl, and fails over when either runs out of credits; /search-router shows status",
   "author": {
     "name": "KeithZhu"

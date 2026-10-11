@@ -182,7 +182,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'shorthand' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{shorthand}')
     const map = await loadShorthand($)
     const add = e.args.match(/^\s*add\s+(.+?)\s*=\s*(.+)$/)
     const rm = e.args.match(/^\s*(rm|remove)\s+(.+?)\s*$/)

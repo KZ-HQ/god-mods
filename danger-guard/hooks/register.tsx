@@ -199,7 +199,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'guard' }, async ($, e) => {
-    count($, 'command.run')
+    count($, 'command.run{guard}')
     const arg = e.args.trim()
     if (arg === 'off' || arg === 'on') isOn = arg === 'on'
 
