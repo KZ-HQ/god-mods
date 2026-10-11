@@ -1,0 +1,65 @@
+# god-mods
+
+Claude Code mods: hooks modules that change Claude's interface and behaviour, published as the `god-mods` plugin marketplace.
+
+## Install
+
+In Claude Code:
+
+```
+/plugin marketplace add KZ-HQ/god-mod
+/plugin install danger-guard@god-mods
+```
+
+Install the mods you want one by one. Restart Claude Code (a full restart; `/reload-plugins` does not load new mod code) for them to take effect.
+
+## Mods
+
+| Mod | What it does |
+| --- | --- |
+| agent-fleet | Pane of running background agents: task, elapsed time, tokens, current tool, with a Stop button; `/fleet` |
+| context-gauge | Band above the prompt: context fill, last turn's cost, session cost and rate limits; `/gauge` toggles it |
+| danger-guard | Holds risky shell commands and writes to protected data, previews what they would change, and asks before they run |
+| limit-guard | Asks before starting agents when the 5h/weekly usage window is nearly spent, records what a usage-limit cut-off stopped; `/limit-guard:resume` continues it |
+| long-turn-notify | macOS notification when a long turn finishes or Claude needs your input, in terminal sessions |
+| merge-gate | Holds `gh pr merge` until CI passes on the PR head; `/gate` runs the project's CI steps locally |
+| mod-stats | `/mod-stats [days]`: what each mod did, cost and saved |
+| next-steps | Suggests 2–3 likely next prompts after each turn; press 1/2/3 to draft one; `/next off` |
+| prompt-shaper | Expands your shorthand and attaches git state to each prompt; adds a project-toolchain note to the system prompt |
+| search-router | Steers web search to Exa and scraping to Firecrawl, and fails over when either runs out of credits; `/search-router` |
+| secret-scrubber | Masks API keys and tokens in tool output, and refuses to write them into source files |
+| switchboard | Picks Haiku, Sonnet or Opus for each subagent from its task; `/route` |
+| test-on-edit | When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt |
+| topic-drift | Band that suggests a fresh session when a prompt drifts off the session's topic |
+| where-am-i | Band with the session's goal and what Claude is doing; `/goal` sets it, `/park` saves where you left off |
+| worktree-janitor | Lists agent worktrees with their PR state and removes merged ones on your say-so; `/worktrees` |
+
+## Metrics
+
+Every mod appends local JSON lines to `~/.claude/mods/metrics.jsonl`; nothing leaves your machine. Rows (schema `v: 2`) carry `t`, `mod`, `event`, `ver`, `session` and `project`:
+
+- `loaded`: once per session start, with the mod's version
+- `turn`: once per turn, counting each hook's calls, e.g. `{"tool.call": 3, "command.run{goal}": 1}`
+- anything else: an outcome the mod recorded, e.g. merge-gate's `verdict`
+
+Rows hold counts, kinds and lengths only, never prompt, command or tool-input text. `/mod-stats` summarises them.
+
+## Development
+
+Each mod is a folder with `.claude-plugin/plugin.json` and `hooks/register.tsx`, plus tests in `tests/`.
+
+The metrics code lives once in `shared/metrics.ts` and is inlined into every `register.tsx` between `// <metrics>` markers, because the engine only lets `$` into functions declared in the same file. Edit the shared file, then:
+
+```bash
+shared/sync.sh          # inline into every mod
+shared/sync.sh --check  # fail if any copy is stale
+```
+
+Check a mod before committing:
+
+```bash
+claude plugin validate <mod>
+claude plugin test <mod>
+```
+
+Bump the mod's version in its `plugin.json` and in `.claude-plugin/marketplace.json` together.
