@@ -98,7 +98,7 @@
       "name": "mod-stats",
       "source": "./mod-stats",
       "description": "/mod-stats [days]: what each mod did, cost and saved",
-      "version": "0.2.1"
+      "version": "0.2.2"
     }
   ],
   "description": "Claude Code mods by KeithZhu"

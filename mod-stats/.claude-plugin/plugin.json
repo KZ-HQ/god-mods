@@ -1,6 +1,6 @@
 {
   "name": "mod-stats",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "/mod-stats [days]: what each god-mods mod did, cost and saved, from ~/.claude/mods/metrics.jsonl",
   "author": {
     "name": "KeithZhu"
