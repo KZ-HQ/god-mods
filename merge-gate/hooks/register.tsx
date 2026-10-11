@@ -1,0 +1,218 @@
+import type { EngineInterface, Register } from 'claude-code'
+
+import { MCP_MERGE, judge, mergeFromMcp, parseMerge, stepsFromMakefile, stepsFromPackage, stepsFromWorkflow } from './steps.ts'
+import type { Check, Merge, Step } from './steps.ts'
+
+// One JSON line per mod event in ~/.claude/mods/metrics.jsonl; /mod-stats reads it.
+// Local only. Fire-and-forget: a failed write never blocks the hook that tracked it,
+// but the first failure per load is surfaced as a toast instead of vanishing.
+const APPEND = 'mkdir -p "$HOME/.claude/mods" && printf "%s\\n" "$1" >> "$HOME/.claude/mods/metrics.jsonl"'
+let trackFailed = false
+
+function track($: EngineInterface, mod: string, event: string, data: Record<string, unknown> = {}): void {
+  void (async () => {
+    const t = new Date(await $.clock.now()).toISOString()
+    const project = (await $.session.cwd()).split('/').filter(Boolean).pop() ?? ''
+    const line = JSON.stringify({ t, mod, event, project, ...data })
+    const { exitCode, stderr } = await $.process.run(['/bin/sh', '-c', APPEND, 'mod-metrics', line], { timeoutMs: 3000 })
+    if (exitCode !== 0) throw new Error(stderr.trim() || `exit ${exitCode}`)
+  })().catch((err: unknown) => {
+    if (trackFailed) return
+    trackFailed = true
+    $.ui.toast(`${mod}: metrics write failed (${err instanceof Error ? err.message : String(err)})`)
+  })
+}
+
+const STEP_TIMEOUT_MS = 10 * 60 * 1000
+const FAIL_TAIL_LINES = 25
+const MERGE = 'Merge anyway'
+const HOLD = "Don't merge"
+
+const join = (root: string, rel: string) => (rel === '.' || rel === '' ? root : rel.startsWith('/') ? rel : `${root}/${rel.replace(/^\.\//, '')}`)
+
+async function repoRoot($: EngineInterface): Promise<string | undefined> {
+  try {
+    const r = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { timeoutMs: 5000 })
+
+    return r.exitCode === 0 ? r.stdout.trim() : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// Where the steps come from, first match wins: .claude/gate.json, CI workflows, Makefile, package.json.
+async function findSteps($: EngineInterface, root: string): Promise<{ source: string; steps: Step[] }> {
+  const read = (p: string) => $.fs.read(`${root}/${p}`).catch(() => undefined)
+
+  const custom = await read('.claude/gate.json')
+  if (custom) {
+    const parsed = JSON.parse(custom) as { steps?: Step[] }
+
+    return { source: '.claude/gate.json', steps: (parsed.steps ?? []).map(s => ({ ...s, cwd: s.cwd ?? '.' })) }
+  }
+
+  const flows = (await $.fs.list(`${root}/.github/workflows`).catch(() => [])).filter(f => /\.ya?ml$/.test(f.name)).map(f => f.name).sort()
+  const fromFlows: Step[] = []
+  for (const f of flows) fromFlows.push(...stepsFromWorkflow((await read(`.github/workflows/${f}`)) ?? ''))
+  if (fromFlows.length) return { source: `.github/workflows (${flows.join(', ')})`, steps: fromFlows }
+
+  const make = await read('Makefile')
+  if (make && stepsFromMakefile(make).length) return { source: 'Makefile', steps: stepsFromMakefile(make) }
+
+  const pkg = await read('package.json')
+  if (pkg) return { source: 'package.json', steps: stepsFromPackage(JSON.parse(pkg) as { scripts?: Record<string, string> }, '.') }
+
+  return { source: 'nothing found', steps: [] }
+}
+
+const tail = (text: string) => text.trimEnd().split('\n').slice(-FAIL_TAIL_LINES).join('\n')
+
+async function runGate($: EngineInterface): Promise<string> {
+  const root = await repoRoot($)
+  if (!root) return 'gate: not in a git repository.'
+  const { source, steps } = await findSteps($, root)
+  if (steps.length === 0) return 'gate: no checks found. Add .claude/gate.json: { "steps": [{ "name": "test", "run": "npm test", "cwd": "." }] }'
+
+  const lines: string[] = [`gate: ${steps.length} steps from ${source}`]
+  for (const [i, step] of steps.entries()) {
+    $.ui.status(`gate: ${i + 1}/${steps.length} ${step.name}…`)
+    const started = await $.clock.now()
+    try {
+      const r = await $.process.run(['/bin/zsh', '-lc', step.run], { cwd: join(root, step.cwd), timeoutMs: STEP_TIMEOUT_MS })
+      const secs = Math.round(((await $.clock.now()) - started) / 1000)
+      if (r.exitCode === 0) {
+        lines.push(`✔ ${step.name} (${secs}s)`)
+        continue
+      }
+      lines.push(`✘ ${step.name} (exit ${r.exitCode}, ${secs}s)`, tail(`${r.stdout}\n${r.stderr}`))
+    } catch (err) {
+      lines.push(`✘ ${step.name}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    const skipped = steps.slice(i + 1).map(s => s.name)
+    if (skipped.length) lines.push(`skipped: ${skipped.join(', ')}`)
+    break
+  }
+  $.ui.status(undefined)
+
+  return lines.join('\n')
+}
+
+async function ask($: EngineInterface, question: string): Promise<boolean> {
+  try {
+    const merged = (await $.ui.ask(question, { header: 'Merge gate', options: [MERGE, HOLD] })) === MERGE
+    track($, 'merge-gate', 'asked', { answer: merged ? 'merge' : 'hold' })
+
+    return merged
+  } catch {
+    return false
+  }
+}
+
+// The desktop app's PATH has no Homebrew, so `gh` alone isn't found there: ask a login shell once
+let ghPath: string | undefined
+
+async function findGh($: EngineInterface): Promise<string> {
+  if (ghPath) return ghPath
+  try {
+    const r = await $.process.run(['/bin/zsh', '-lc', 'command -v gh'], { timeoutMs: 5000 })
+    const found = r.stdout.trim().split('\n').pop()
+    if (r.exitCode === 0 && found?.startsWith('/')) return (ghPath = found)
+  } catch {
+    // No zsh: fall back to PATH
+  }
+
+  return 'gh'
+}
+
+async function gh($: EngineInterface, args: string[], cwd: string | undefined) {
+  const r = await $.process.run([await findGh($), ...args], { cwd, timeoutMs: 30000 })
+
+  return { code: r.exitCode, out: r.stdout.trim(), err: r.stderr.trim() }
+}
+
+const heldOnError = (error: unknown) => ({
+  deny: `merge-gate could not check this merge (${error instanceof Error ? error.message : String(error)}), so it was held.`,
+})
+
+// Undefined lets the merge go ahead; a string is why it is held.
+async function gate($: EngineInterface, merge: Merge): Promise<string | undefined> {
+  const sessionCwd = await $.session.cwd()
+  const cwd = merge.cwd ? join(sessionCwd, merge.cwd) : sessionCwd
+  const target = [...(merge.selector ? [merge.selector] : []), ...(merge.repo ? ['--repo', merge.repo] : [])]
+  const label = merge.selector ? `PR ${merge.selector}` : 'the PR for this branch'
+
+  let checks: Check[]
+  let draft = false
+  try {
+    const view = await gh($, ['pr', 'view', ...target, '--json', 'number,isDraft,state'], cwd)
+    if (view.code !== 0) throw new Error(view.err.split('\n')[0] || `gh exited ${view.code}`)
+    draft = (JSON.parse(view.out) as { isDraft: boolean }).isDraft
+    // Exits non-zero while checks fail or run, and still prints them
+    const r = await gh($, ['pr', 'checks', ...target, '--json', 'name,bucket,state'], cwd)
+    checks = r.out.startsWith('[') ? (JSON.parse(r.out) as Check[]) : []
+    if (!r.out.startsWith('[') && !/no checks reported/i.test(r.err)) throw new Error(r.err.split('\n')[0] || `gh exited ${r.code}`)
+  } catch (err) {
+    const why = err instanceof Error ? err.message : String(err)
+
+    return (await ask($, `merge-gate couldn't read CI for ${label} (${why}). Merge anyway?`))
+      ? undefined
+      : `merge-gate: couldn't verify CI for ${label} (${why}), and the user didn't approve merging blind.`
+  }
+
+  if (draft) return `merge-gate: ${label} is a draft. Mark it ready for review first.`
+
+  const verdict = judge(checks)
+  track($, 'merge-gate', 'verdict', { kind: verdict.kind })
+  switch (verdict.kind) {
+    case 'pass':
+      $.ui.toast(`merge-gate: ${verdict.count} checks passed on ${label}`)
+
+      return undefined
+    case 'fail':
+      return `merge-gate: CI failed on ${label}: ${verdict.names.join(', ')}. Fix and push, then merge once checks pass.`
+    case 'pending':
+      return `merge-gate: CI is still running on ${label} (${verdict.names.join(', ')}). Wait with \`gh pr checks ${merge.selector ?? ''} --watch\`, or queue it with \`gh pr merge --auto\`.`
+    case 'none':
+      return (await ask($, `${label} has no CI checks. Merge anyway?`))
+        ? undefined
+        : `merge-gate: ${label} has no CI checks and the user didn't approve merging without them.`
+  }
+}
+
+export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({ name: 'gate', description: "Run the project's CI steps locally (no Claude turn); /gate list shows them" })
+
+    return next(e)
+  })
+
+  on('command.run', { command: 'gate' }, async ($, e) => {
+    if (e.args.trim() === 'list') {
+      const root = await repoRoot($)
+      if (!root) return { text: 'gate: not in a git repository.' }
+      const { source, steps } = await findSteps($, root)
+
+      return { text: [`From ${source}:`, ...steps.map(s => `  [${s.cwd}] ${s.run.replace(/\n/g, ' && ')}`)].join('\n') }
+    }
+
+    return { text: await runGate($) }
+  })
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const merge = parseMerge(e.command)
+    if (!merge) return next(e)
+    const deny = await gate($, merge)
+
+    return deny === undefined ? next(e) : { deny }
+  }).catch(($, e, next) => (next.called ? next(e) : heldOnError(next.error)))
+
+  // The same gate for a merge through an MCP server's tool
+  on('tool.call', async ($, e, next) => {
+    if (!MCP_MERGE.test(String(e.tool)) || !String(e.tool).startsWith('mcp__')) return next(e)
+    const merge = mergeFromMcp(e as unknown as Record<string, unknown>)
+    if (!merge) return next(e)
+    const deny = await gate($, merge)
+
+    return deny === undefined ? next(e) : { deny }
+  }).catch(($, e, next) => (next.called ? next(e) : heldOnError(next.error)))
+}

@@ -1,0 +1,146 @@
+import type { EngineInterface, Register } from 'claude-code'
+
+import { candidates, runner, summary } from './find.ts'
+
+// One JSON line per mod event in ~/.claude/mods/metrics.jsonl; /mod-stats reads it.
+// Local only. Fire-and-forget: a failed write never blocks the hook that tracked it,
+// but the first failure per load is surfaced as a toast instead of vanishing.
+const APPEND = 'mkdir -p "$HOME/.claude/mods" && printf "%s\\n" "$1" >> "$HOME/.claude/mods/metrics.jsonl"'
+let trackFailed = false
+
+function track($: EngineInterface, mod: string, event: string, data: Record<string, unknown> = {}): void {
+  void (async () => {
+    const t = new Date(await $.clock.now()).toISOString()
+    const project = (await $.session.cwd()).split('/').filter(Boolean).pop() ?? ''
+    const line = JSON.stringify({ t, mod, event, project, ...data })
+    const { exitCode, stderr } = await $.process.run(['/bin/sh', '-c', APPEND, 'mod-metrics', line], { timeoutMs: 3000 })
+    if (exitCode !== 0) throw new Error(stderr.trim() || `exit ${exitCode}`)
+  })().catch((err: unknown) => {
+    if (trackFailed) return
+    trackFailed = true
+    $.ui.toast(`${mod}: metrics write failed (${err instanceof Error ? err.message : String(err)})`)
+  })
+}
+
+const TIMEOUT_MS = 60_000
+
+// Test files running now: an edit while its test still runs adds nothing
+const running = new Set<string>()
+let isOn = true
+// Files edited this turn, and failures waiting for the next prompt
+const edited = new Set<string>()
+let pending: string | undefined
+
+async function repoRoot($: EngineInterface, cwd: string): Promise<string> {
+  const r = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd, timeoutMs: 5000 }).catch(() => undefined)
+
+  return r && r.exitCode === 0 ? r.stdout.trim() : cwd
+}
+
+async function project($: EngineInterface, root: string) {
+  const hasUvLock = await $.fs.exists(`${root}/uv.lock`).catch(() => false)
+  let deps: string[] = []
+  try {
+    const pkg = JSON.parse(await $.fs.read(`${root}/package.json`)) as { dependencies?: object; devDependencies?: object }
+    deps = [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})]
+  } catch {
+    // No package.json
+  }
+
+  return { hasUvLock, deps }
+}
+
+type Result = { test: string; ok: boolean; note: string }
+
+async function findTest($: EngineInterface, path: string, root: string): Promise<string | undefined> {
+  for (const c of candidates(path, root)) if (await $.fs.exists(c).catch(() => false)) return c
+
+  return undefined
+}
+
+async function runTest($: EngineInterface, test: string, root: string): Promise<Result | undefined> {
+  if (running.has(test)) return undefined
+  running.add(test)
+  const rel = test.startsWith(`${root}/`) ? test.slice(root.length + 1) : test
+  const command = runner(rel, await project($, root))
+  const started = await $.clock.now()
+  try {
+    const r = await $.process.run(['/bin/zsh', '-lc', command], { cwd: root, timeoutMs: TIMEOUT_MS })
+    const secs = Math.round(((await $.clock.now()) - started) / 1000)
+
+    return r.exitCode === 0
+      ? { test: rel, ok: true, note: `${rel} passes (${secs}s)` }
+      : { test: rel, ok: false, note: `${rel} FAILS (exit ${r.exitCode}, \`${command}\`):\n${summary(`${r.stdout}\n${r.stderr}`)}` }
+  } catch (err) {
+    return { test: rel, ok: false, note: `${rel} could not run within ${TIMEOUT_MS / 1000}s (${err instanceof Error ? err.message : String(err)})` }
+  } finally {
+    running.delete(test)
+  }
+}
+
+export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({ name: 'test-on-edit', description: 'Run the edited file\'s tests after each edit: /test-on-edit off | on' })
+
+    return next(e)
+  })
+
+  on('command.run', { command: 'test-on-edit' }, async (_$, e) => {
+    const arg = e.args.trim()
+    if (arg === 'off' || arg === 'on') isOn = arg === 'on'
+
+    return { text: `${isOn ? 'on' : 'off for this session'}.` }
+  })
+
+  // During a turn: only note which files changed
+  on('tool.call', async ($, e, next) => {
+    const ran = await next(e)
+    if (isOn && (e.tool === 'Edit' || e.tool === 'Write') && ran.deny === undefined && !ran.isError) edited.add(String(e.file_path))
+
+    return ran
+  })
+
+  // When Claude's answer ends: run each edited file's tests once, off the turn's path
+  on('turn.complete', async ($, e, next) => {
+    const done = await next(e)
+    if (e.agentId !== undefined || edited.size === 0 || !isOn) return done
+    const paths = [...edited]
+    edited.clear()
+    void (async () => {
+      const root = await repoRoot($, await $.session.cwd())
+      const tests = new Set<string>()
+      for (const p of paths) {
+        const t = await findTest($, p, root)
+        if (t) tests.add(t)
+      }
+      if (tests.size === 0) return
+      $.ui.status(`test-on-edit: running ${tests.size} test file${tests.size > 1 ? 's' : ''}…`)
+      const results = (await Promise.all([...tests].map(t => runTest($, t, root)))).filter((r): r is Result => !!r)
+      const failed = results.filter(r => !r.ok)
+      track($, 'test-on-edit', 'run', { files: results.length, failed: failed.length })
+      if (failed.length === 0) {
+        pending = undefined
+        $.ui.status(undefined)
+        $.ui.toast(`test-on-edit: ${results.length} test file${results.length > 1 ? 's' : ''} pass`)
+
+        return
+      }
+      pending = `test-on-edit ran the tests for files edited last turn, and some fail:\n\n${failed.map(r => r.note).join('\n\n')}`
+      $.ui.status(`test-on-edit: ${failed.length} failing (${failed.map(r => r.test.split('/').pop()).join(', ')}); Claude sees it with your next prompt`)
+      $.ui.toast(`test-on-edit: ${failed.map(r => r.test).join(', ')} failing`)
+    })().catch(() => $.ui.status(undefined))
+
+    return done
+  })
+
+  // Hand failures to Claude with the next prompt, once
+  on('prompt.submit', async ($, e, next) => {
+    if (!pending || (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge')) return next(e)
+    const note = pending
+    pending = undefined
+    $.ui.status(undefined)
+    track($, 'test-on-edit', 'delivered', { chars: note.length })
+
+    return next({ ...e, context: [...(e.context ?? []), note] })
+  }).catch(($, e, next) => next(e))
+}

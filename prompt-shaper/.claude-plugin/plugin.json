@@ -1,0 +1,8 @@
+{
+  "name": "prompt-shaper",
+  "version": "0.2.1",
+  "description": "Expands your shorthand and attaches git state to each prompt; adds a stable project-toolchain note to the system prompt",
+  "author": {
+    "name": "KeithZhu"
+  }
+}

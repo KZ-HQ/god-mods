@@ -1,0 +1,8 @@
+{
+  "name": "test-on-edit",
+  "version": "0.3.1",
+  "description": "When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt",
+  "author": {
+    "name": "KeithZhu"
+  }
+}
