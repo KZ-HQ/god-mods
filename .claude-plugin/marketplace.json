@@ -14,7 +14,7 @@
       "name": "danger-guard",
       "source": "./danger-guard",
       "description": "Holds risky shell commands and writes to protected data, previews what they would change, and asks before they run",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     {
       "name": "prompt-shaper",
@@ -56,7 +56,7 @@
       "name": "merge-gate",
       "source": "./merge-gate",
       "description": "Holds gh pr merge until CI passes on the PR head; /gate runs the project CI steps locally without a Claude turn",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     {
       "name": "secret-scrubber",

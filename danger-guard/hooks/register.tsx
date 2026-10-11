@@ -207,7 +207,7 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    count($, 'tool.call')
+    count($, 'tool.call{Bash}')
     if (!isOn) return next(e)
     const risks = assess(e.command)
     if (risks.length === 0) return next(e)

@@ -272,7 +272,7 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    count($, 'tool.call')
+    count($, 'tool.call{Bash}')
     const merge = parseMerge(e.command)
     if (!merge) return next(e)
     const deny = await gate($, merge)
