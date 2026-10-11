@@ -67,4 +67,30 @@ describe('search-router', () => {
     for (let i = 0; i < 3; i++) await $.tool.call({ tool: EXA, query: 'x' } as never)
     expect(writes).toBe(0)
   })
+
+  test('metrics: a loaded row at session start, and a quiet pass-through Exa call still counts in the turn row', async ($, on) => {
+    mock.clock(on)
+    mock.store(on)
+    const rows: Record<string, unknown>[] = []
+    on('session.cwd', () => ({ value: '/x/my-app' }))
+    on('session.id', () => ({ value: 's1' }))
+    on('fs.read', () => ({ value: '{"version":"9.9.9"}' }) as never)
+    on('process.run', (_$, e) => {
+      if (e.argv[3] === 'mod-metrics') rows.push(JSON.parse(e.argv[4]!) as Record<string, unknown>)
+
+      return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    })
+    on('session.start', (_$, e) => e as never)
+    on('command.register', () => ({ value: undefined }))
+    on('tool.call', { tool: EXA }, () => ({ result: 'exa results' }))
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+
+    await $.session.start({ source: 'startup', cwd: '/x/my-app' } as never)
+    await $.tool.call({ tool: EXA, query: 'x' } as never)
+    await $.turn.complete({ answer: 'ok', durationMs: 1, isAborted: false, turnId: 't', reason: 'answer' } as never)
+    for (let i = 0; i < 50 && rows.length < 2; i++) await $.clock.now()
+
+    expect(rows.find(r => r.event === 'loaded')).toMatchObject({ v: 2, mod: 'search-router', ver: '9.9.9', session: 's1', project: 'my-app' })
+    expect(rows.find(r => r.event === 'turn')).toMatchObject({ v: 2, mod: 'search-router', hooks: { 'session.start': 1, 'tool.call': 1 } })
+  })
 })

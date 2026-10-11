@@ -1,6 +1,6 @@
 {
   "name": "next-steps",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Suggests 2-3 likely next prompts after each turn, press 1/2/3 to draft one; /next off",
   "author": {
     "name": "KeithZhu"

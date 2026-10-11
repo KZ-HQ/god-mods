@@ -34,6 +34,7 @@ function engine(on: On, exitCode: number) {
   on('fs.exists', (_$, e) => ({ value: e.path === '/r/test/scoped.test.mjs' }))
   on('fs.read', () => ({ value: '{"devDependencies":{}}' }))
   on('process.run', (_$, e) => {
+    if (e.argv[3] === 'mod-metrics') return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     if (e.argv[0] === 'git') return out('/r\n')
     ran.push(e.argv.join(' '))
 

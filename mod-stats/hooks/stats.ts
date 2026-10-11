@@ -83,15 +83,29 @@ function line(mod: string, rows: Row[]): string {
   }
 }
 
+// v2 rows the shared metrics block writes for every mod; everything else is an outcome row
+const TELEMETRY = new Set(['loaded', 'turn'])
+
+function telemetry(rows: Row[]): string {
+  const loads = rows.filter(r => r.event === 'loaded')
+  const calls = rows.filter(r => r.event === 'turn').reduce((a, r) => a + Object.values((r.hooks ?? {}) as Record<string, unknown>).reduce((b: number, n) => b + num(n), 0), 0)
+  const vers = [...new Set(loads.map(r => String(r.ver ?? '?')))].sort()
+  if (!loads.length && !calls) return ''
+
+  return ` · loaded ${loads.length}× (v${vers.join(', v') || '?'}), ${calls} hook calls`
+}
+
 export function report(all: Row[], sinceMs: number, days: number, project?: string): string {
   const rows = all.filter(r => Date.parse(r.t) >= sinceMs && (!project || r.project === project))
+  const outcomes = rows.filter(r => !TELEMETRY.has(r.event))
   const mods = [...new Set([...MODS, ...rows.map(r => r.mod)])].sort()
-  const out = [`Mod activity, last ${days} day${days === 1 ? '' : 's'}${project ? ` in ${project}` : ''} (${rows.length} events):`]
+  const out = [`Mod activity, last ${days} day${days === 1 ? '' : 's'}${project ? ` in ${project}` : ''} (${outcomes.length} events):`]
   const quiet: string[] = []
   for (const mod of mods) {
     const mine = rows.filter(r => r.mod === mod)
+    const acts = mine.filter(r => !TELEMETRY.has(r.event))
     if (mine.length === 0) quiet.push(mod)
-    else out.push(`  ${mod}: ${line(mod, mine)}`)
+    else out.push(`  ${mod}: ${acts.length ? line(mod, acts) : 'no outcomes'}${telemetry(mine)}`)
   }
   if (quiet.length) out.push(`  No events: ${quiet.join(', ')}`)
   out.push('Token figures for notes are estimates (4 characters per token); $ are list prices.')

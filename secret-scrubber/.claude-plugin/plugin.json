@@ -1,6 +1,6 @@
 {
   "name": "secret-scrubber",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Masks API keys and tokens in tool output before Claude or the transcript sees them, and refuses writing them into source files",
   "author": {
     "name": "KeithZhu"

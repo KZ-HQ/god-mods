@@ -1,27 +1,7 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, On, Register } from 'claude-code'
 
 import type { Parked } from '../types'
-
-// One JSON line per mod event in ~/.claude/mods/metrics.jsonl; /mod-stats reads it.
-// Local only. Fire-and-forget: a failed write never blocks the hook that tracked it,
-// but the first failure per load is surfaced as a toast instead of vanishing.
-const APPEND = 'mkdir -p "$HOME/.claude/mods" && printf "%s\\n" "$1" >> "$HOME/.claude/mods/metrics.jsonl"'
-let trackFailed = false
-
-function track($: EngineInterface, mod: string, event: string, data: Record<string, unknown> = {}): void {
-  void (async () => {
-    const t = new Date(await $.clock.now()).toISOString()
-    const project = (await $.session.cwd()).split('/').filter(Boolean).pop() ?? ''
-    const line = JSON.stringify({ t, mod, event, project, ...data })
-    const { exitCode, stderr } = await $.process.run(['/bin/sh', '-c', APPEND, 'mod-metrics', line], { timeoutMs: 3000 })
-    if (exitCode !== 0) throw new Error(stderr.trim() || `exit ${exitCode}`)
-  })().catch((err: unknown) => {
-    if (trackFailed) return
-    trackFailed = true
-    $.ui.toast(`${mod}: metrics write failed (${err instanceof Error ? err.message : String(err)})`)
-  })
-}
 
 const goal = atom({ plugin: 'where-am-i', key: 'goal' } as const, '')
 const now = atom({ plugin: 'where-am-i', key: 'now' } as const, '')
@@ -57,8 +37,98 @@ const ago = (ms: number) => {
   return h < 1 ? 'just now' : h < 48 ? `${h}h ago` : `${Math.round(h / 24)}d ago`
 }
 
+// <metrics: generated from shared/metrics.ts by shared/sync.sh>
+// Shared mod metrics (schema v2). Source of truth: ~/.claude/mods/shared/metrics.ts.
+// shared/sync.sh inlines it between the metrics markers in each mod's register.tsx (the engine only lets $
+// into functions declared in the same file). Edit here, run sync.sh, never edit an inlined copy.
+//
+// Rows appended to ~/.claude/mods/metrics.jsonl, all with { v: 2, t, mod, event, ver, session, project }:
+//   loaded   once per load (logLoaded, or count() in the mod's session.start hook), at session.start: proves which version of the mod is running
+//   turn     once per turn with activity (logTurns, or count() in the mod's turn.complete hook): { hooks: { <event>: calls } }
+//   <other>  outcome rows from track(), e.g. merge-gate 'verdict'
+// Privacy: never put prompt, command, tool-input or matched-secret text in a row; lengths, kinds and counts only.
+
+const APPEND = 'mkdir -p "$HOME/.claude/mods" && printf "%s\\n" "$1" >> "$HOME/.claude/mods/metrics.jsonl"'
+
+
+const ctx = { ver: '', session: '', project: '' }
+const stats = new Map<string, number>()
+let writeFailed = false
+
+const message = (err: unknown) => (err instanceof Error ? err.message : String(err)).slice(0, 300)
+
+function write($: EngineInterface, mod: string, event: string, data: Record<string, unknown>): void {
+  void (async () => {
+    const t = new Date(await $.clock.now()).toISOString()
+    if (!ctx.project) ctx.project = (await $.session.cwd()).split('/').filter(Boolean).pop() ?? ''
+    const line = JSON.stringify({ v: 2, t, mod, event, ver: ctx.ver, session: ctx.session, project: ctx.project, ...data })
+    const { exitCode, stderr } = await $.process.run(['/bin/sh', '-c', APPEND, 'mod-metrics', line], { timeoutMs: 3000 })
+    if (exitCode !== 0) throw new Error(stderr.trim() || `exit ${exitCode}`)
+  })().catch((err: unknown) => {
+    if (writeFailed) return
+    writeFailed = true
+    $.ui.toast(`${mod}: metrics write failed (${message(err)})`)
+  })
+}
+
+// An outcome row: something the mod decided or did. Fire-and-forget.
+function track($: EngineInterface, mod: string, event: string, data: Record<string, unknown> = {}): void {
+  write($, mod, event, data)
+}
+
+async function loaded($: EngineInterface): Promise<void> {
+  const mod = $.plugin.name
+  ctx.session = await $.session.id().catch(() => '')
+  ctx.project = ''
+  try {
+    const manifest = JSON.parse(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`)) as { version?: string }
+    ctx.ver = manifest.version ?? ''
+  } catch {
+    ctx.ver = '?'
+  }
+  write($, mod, 'loaded', {})
+}
+
+function flush($: EngineInterface): void {
+  const mod = $.plugin.name
+  if (!stats.size) return
+  const hooks = Object.fromEntries(stats)
+  stats.clear()
+  write($, mod, 'turn', { hooks })
+}
+
+// The engine allows one hook per event per plugin, and counts them by spelling. A mod that hooks
+// session.start or turn.complete itself calls count() in that hook, which writes the row; otherwise
+// it calls the matching helper once in register.
+function logLoaded(on: On): void {
+  on('session.start', async ($, e, next) => {
+    await loaded($)
+
+    return next(e)
+  })
+}
+
+function logTurns(on: On): void {
+  on('turn.complete', async ($, e, next) => {
+    flush($)
+
+    return next(e)
+  })
+}
+
+// First statement of every hook: counts the call into this turn's row. The engine only accepts
+// function literals as hooks, so calls are counted from inside rather than by wrapping.
+// In a session.start hook it also writes the loaded row; in a turn.complete hook it writes the turn row.
+function count($: EngineInterface, event: string): void {
+  stats.set(event, (stats.get(event) ?? 0) + 1)
+  if (event === 'session.start') void loaded($)
+  if (event === 'turn.complete') flush($)
+}
+// </metrics>
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    count($, 'session.start')
     await $.command.register({ name: 'goal', description: "Set this session's goal shown above the prompt; /goal clear, /goal hide" })
     await $.command.register({ name: 'park', description: 'Save where you left off in this folder: /park [note]; shown when you come back. /park clear' })
     const saved = (await $.store.get(await parkKey($)).catch(() => undefined)) as Parked | undefined
@@ -72,6 +142,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'goal' }, async ($, e) => {
+    count($, 'command.run')
     const arg = e.args.trim()
     if (arg === 'hide' || arg === 'show') {
       await update($, isHidden, () => arg === 'hide')
@@ -89,6 +160,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'park' }, async ($, e) => {
+    count($, 'command.run')
     const key = await parkKey($)
     if (e.args.trim() === 'clear') {
       await $.store.delete(key)
@@ -104,6 +176,7 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
+    count($, 'prompt.submit')
     if ((e.origin.kind === 'composer' || e.origin.kind === 'bridge') && !e.text.trim().startsWith('/')) {
       if (!(await read($, goal))) await update($, goal, () => firstLine(e.text))
     }
@@ -112,12 +185,14 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('tool.call', async ($, e, next) => {
+    count($, 'tool.call')
     if (e.agentId === undefined) await update($, now, () => doing(e as unknown as Record<string, unknown>))
 
     return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {
+    count($, 'turn.complete')
     const done = await next(e)
     if (e.agentId === undefined) await update($, now, () => '')
 
@@ -125,6 +200,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    count($, 'ui.render')
     const g = await read($, goal)
     const p = await read($, parked)
     if (e.props.hasSurvey || (await read($, isHidden)) || (!g && !p)) return next(e)

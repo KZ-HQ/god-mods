@@ -61,9 +61,10 @@ describe('modes', () => {
     await $.agent.spawn(SPAWN('Find where reminders are sent'))
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 1_000_000 }
     await $.turn.complete({ answer: 'ok', durationMs: 1, isAborted: false, turnId: 't', reason: 'answer', agentId: 'a1', usage } as never)
-    for (let i = 0; i < 50 && lines.length === 0; i++) await $.agent.spawn(SPAWN('noop'))
-    const row = JSON.parse(lines[0]!)
-    expect(row).toMatchObject({ mod: 'switchboard', event: 'agent', project: 'my-app', asked: 'opus', used: 'haiku', applied: true })
+    const agentRow = () => lines.map(l => JSON.parse(l) as { event: string }).find(r => r.event === 'agent')
+    for (let i = 0; i < 50 && !agentRow(); i++) await $.agent.spawn(SPAWN('noop'))
+    const row = agentRow()
+    expect(row).toMatchObject({ v: 2, mod: 'switchboard', event: 'agent', project: 'my-app', asked: 'opus', used: 'haiku', applied: true })
     expect(row.savedUsd).toBe(4.875)
   })
 })

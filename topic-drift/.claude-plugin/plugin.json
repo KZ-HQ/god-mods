@@ -1,6 +1,6 @@
 {
   "name": "topic-drift",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Band above the prompt that suggests a fresh session when a prompt drifts off the session's topic",
   "author": {
     "name": "KeithZhu"

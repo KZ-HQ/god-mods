@@ -31,4 +31,18 @@ describe('stats', () => {
     const text = [L({ mod: 'secret-scrubber', event: 'masked' }), L({ mod: 'secret-scrubber', event: 'masked', project: 'other' })].join('\n')
     expect(report(parse(text), 0, 7, 'other')).toMatch(/secret-scrubber: 1 outputs masked/)
   })
+
+  test('v2 rows: loads and hook calls show beside outcomes, and a loaded mod with no outcomes is not quiet', async () => {
+    const text = [
+      L({ v: 2, mod: 'search-router', event: 'loaded', ver: '0.3.0' }),
+      L({ v: 2, mod: 'search-router', event: 'turn', hooks: { 'tool.call': 3, 'turn.complete': 1 } }),
+      L({ v: 2, mod: 'merge-gate', event: 'loaded', ver: '0.2.0' }),
+      L({ v: 2, mod: 'merge-gate', event: 'verdict', kind: 'pass' }),
+    ].join('\n')
+    const out = report(parse(text), 0, 7)
+    expect(out).toMatch(/search-router: no outcomes · loaded 1× \(v0\.3\.0\), 4 hook calls/)
+    expect(out).toMatch(/merge-gate: 1 merges checked: 1 pass.* · loaded 1× \(v0\.2\.0\), 0 hook calls/)
+    expect(out).toMatch(/\(1 events\)/)
+    expect(out).not.toMatch(/No events: .*search-router/)
+  })
 })

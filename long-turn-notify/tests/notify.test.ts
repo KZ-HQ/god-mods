@@ -10,7 +10,9 @@ function engine(on: On, surface: 'terminal' | 'desktop') {
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('session.cwd', () => ({ value: '/Users/me/other-app' }))
   on('session.surfaces', () => ({ value: [surface] }))
+  on('clock.now', () => ({ value: 0 }))
   on('process.run', (_$, e) => {
+    if (e.argv[3] === 'mod-metrics') return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     ran.push([...e.argv])
 
     return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
