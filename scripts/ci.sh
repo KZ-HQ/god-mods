@@ -1,8 +1,11 @@
 #!/bin/sh
-# Runs every god-mods check: validate + test each mod, shared-code sync, manifest versions, test coverage.
+# Runs every god-mods check: validate + test each mod, shared-code sync, manifest versions + bumps, test coverage.
 # Same script locally and in CI. Exits non-zero if anything fails.
 cd "$(dirname "$0")/.." || exit 1
 fail=0
+# Base to diff against for the version-bump check: BASE_REF if set (CI), else origin/main.
+base=${BASE_REF:-origin/main}
+git rev-parse -q --verify "$base" >/dev/null || base=
 for d in */; do
   m=${d%/}
   [ -f "$m/.claude-plugin/plugin.json" ] || continue
@@ -11,6 +14,11 @@ for d in */; do
   pv=$(jq -r .version "$m/.claude-plugin/plugin.json")
   mv=$(jq -r --arg m "$m" '.plugins[] | select(.name == $m) | .version' .claude-plugin/marketplace.json)
   [ "$pv" = "$mv" ] || { echo "version MISMATCH: $m plugin.json=$pv marketplace.json=${mv:-missing}"; fail=1; }
+  # Installs only update on a version change, so a changed mod needs a bump.
+  if [ -n "$base" ] && ! git diff --quiet "$base" -- "$m"; then
+    bv=$(git show "$base:$m/.claude-plugin/plugin.json" 2>/dev/null | jq -r .version)
+    [ "$pv" != "$bv" ] || { echo "version NOT BUMPED: $m changed since $base but is still $pv"; fail=1; }
+  fi
 
 done
 for n in $(jq -r '.plugins[].name' .claude-plugin/marketplace.json); do
