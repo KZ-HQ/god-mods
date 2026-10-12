@@ -169,3 +169,25 @@ describe('metrics', () => {
     expect(toasts.filter(t => t.includes('metrics write failed'))).toEqual(['context-gauge: metrics write failed (Operation not permitted)'])
   })
 })
+
+describe('last turn', () => {
+  test('shows what the last main-loop turn cost and how long it took', async ($, on) => {
+    on('session.measure', (_$, e) => ({ changed: e.changed }))
+    on('session.cwd', () => ({ value: '/r' }))
+    on('process.run', () => ({ value: { exitCode: 0, stdout: '', stderr: '' } }) as never)
+    on('ui.render', { component: 'AbovePrompt' }, ($, e) => h($.ui.resolve(e).Box, {}) as ReturnType<typeof h> & object)
+    let usdNow = 1
+    on('session.usage', () => ({ value: { cost: { usd: usdNow } } }) as never)
+    const clock = mock.clock(on, { now: 0 })
+    on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+
+    await $.turn.start({ text: 'go', turnId: 't1' })
+    usdNow = 1.25
+    await clock.advance(7_000)
+    await $.turn.complete({ answer: 'done', durationMs: 7000, isAborted: false, turnId: 't1', reason: 'answer' })
+    await $.session.measure(measure(40))
+    const ui = await $.ui.mount({ plugin: 'context-gauge', surface: 'terminal', ...BAND })
+    expect(await ui.find({ type: 'Text', text: /last turn \$0\.250 · 7s/ })).toBeDefined()
+  })
+})

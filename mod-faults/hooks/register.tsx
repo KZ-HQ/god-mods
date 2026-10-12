@@ -192,6 +192,7 @@ export const register: Register = (on: On) => {
   on('session.start', start)
   on('turn.complete', turnEnd)
   on('command.run', { command: 'mod-faults' }, report)
+  // coverage: observer — one watch() hook on every event; tests/faults.test.ts drives it through tool.call
   on('session.end', watch)
   on('session.measure', watch)
   on('session.append', watch)
