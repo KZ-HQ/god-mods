@@ -1,27 +1,37 @@
 import type { Register } from 'claude-code'
 
-const FALLBACK = [
-  'agent-fleet', 'context-gauge', 'danger-guard', 'limit-guard', 'long-turn-notify', 'merge-gate',
-  'mod-stats', 'next-steps', 'prompt-shaper', 'search-router', 'secret-scrubber', 'switchboard',
-  'test-on-edit', 'topic-drift', 'where-am-i', 'worktree-janitor',
-]
-let GOD_MODS = new Set(FALLBACK)
-let listSource = 'built-in fallback'
+// <modlist: generated from shared/modlist.ts by shared/sync.sh>
+// The god-mods mod list, read from the marketplace's own marketplace.json. Source of truth: ~/.claude/mods/shared/modlist.ts.
+// shared/sync.sh inlines it between the modlist markers in each mod that uses it. Edit here, run sync.sh, never edit an inlined copy.
+// Undefined when the god-mods marketplace is not installed or its manifest is unreadable.
 
-async function loadModList($: any) {
+async function godModList($: EngineInterface): Promise<{ names: string[]; file: string } | undefined> {
   try {
     const home = await $.env.get('HOME')
     const known = JSON.parse(await $.fs.read(`${home}/.claude/plugins/known_marketplaces.json`))
     const root = known['god-mods']?.installLocation ?? known['god-mods']?.source?.path
-    if (!root) return
+    if (!root) return undefined
     const file = `${root}/.claude-plugin/marketplace.json`
-    const names = JSON.parse(await $.fs.read(file)).plugins.map((p: any) => p.name).filter((n: string) => n !== 'mod-faults')
-    if (names.length) {
-      GOD_MODS = new Set(names)
-      listSource = file
-    }
-  } catch {}
+    const names = (JSON.parse(await $.fs.read(file)).plugins as { name: string }[]).map(p => p.name)
+
+    return names.length ? { names, file } : undefined
+  } catch {
+    return undefined
+  }
 }
+// </modlist>
+
+// Without the marketplace manifest, only plugins installed as <name>@god-mods count
+let GOD_MODS = new Set<string>()
+let listSource = 'unavailable (matching @god-mods installs only)'
+
+async function loadModList($: any) {
+  const list = await godModList($)
+  if (!list) return
+  GOD_MODS = new Set(list.names.filter(n => n !== 'mod-faults'))
+  listSource = list.file
+}
+
 const isGodMod = (plugin: string) => GOD_MODS.has(plugin.split('@')[0]) || plugin.endsWith('@god-mods')
 const FAULTS = new Set(['skipped', 'kept', 'expired', 'caught', 'rejected'])
 const KEEP = 1000
