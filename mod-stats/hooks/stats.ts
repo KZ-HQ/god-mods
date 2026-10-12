@@ -67,6 +67,8 @@ function line(mod: string, rows: Row[]): string {
       return `${of('stopped').length} agents stopped from the pane`
     case 'worktree-janitor':
       return `${of('found').length} scans found merged worktrees · ${sum('cleaned', 'removed')} removed`
+    case 'mod-faults':
+      return `${of('fault').length} hook faults recorded across mods`
     case 'where-am-i':
       return `${of('park').length} parks · ${of('parked-shown').length} parked notes shown on return`
     default: {
@@ -96,12 +98,20 @@ export function report(all: Row[], sinceMs: number, days: number, project?: stri
   const outcomes = rows.filter(r => !TELEMETRY.has(r.event))
   const names = [...new Set([...mods, ...rows.map(r => r.mod)])].sort()
   const out = [`Mod activity, last ${days} day${days === 1 ? '' : 's'}${project ? ` in ${project}` : ''} (${outcomes.length} events):`]
+  // mod-faults records each hook fault as its own row, naming the mod that faulted
+  const faults = new Map<string, number>()
+  for (const r of rows) {
+    if (r.mod !== 'mod-faults' || r.event !== 'fault' || typeof r.plugin !== 'string') continue
+    const of = r.plugin.split('@')[0]!
+    faults.set(of, (faults.get(of) ?? 0) + 1)
+  }
   const quiet: string[] = []
-  for (const mod of names) {
+  for (const mod of [...new Set([...names, ...faults.keys()])].sort()) {
     const mine = rows.filter(r => r.mod === mod)
     const acts = mine.filter(r => !TELEMETRY.has(r.event))
-    if (mine.length === 0) quiet.push(mod)
-    else out.push(`  ${mod}: ${acts.length ? line(mod, acts) : 'no outcomes'}${telemetry(mine)}`)
+    const faulted = faults.get(mod) ? ` · ${faults.get(mod)} fault${faults.get(mod) === 1 ? '' : 's'}` : ''
+    if (mine.length === 0 && !faulted) quiet.push(mod)
+    else out.push(`  ${mod}: ${acts.length ? line(mod, acts) : 'no outcomes'}${mine.length ? telemetry(mine) : ''}${faulted}`)
   }
   if (quiet.length) out.push(`  No events: ${quiet.join(', ')}`)
   out.push('Token figures for notes are estimates (4 characters per token); $ are list prices.')
