@@ -69,4 +69,18 @@ describe('stats', () => {
     expect(out.text).toMatch(/switchboard: no outcomes/)
     expect(out.text).not.toMatch(/No events/)
   })
+
+  test('shows mod-faults fault rows against the mod that faulted', async () => {
+    const text = [
+      L({ v: 2, mod: 'danger-guard', event: 'loaded', ver: '0.4.2' }),
+      L({ v: 2, mod: 'mod-faults', event: 'fault', plugin: 'danger-guard', hookEvent: 'tool.call', outcome: 'skipped', reasonKind: 'none' }),
+      L({ v: 2, mod: 'mod-faults', event: 'fault', plugin: 'danger-guard@god-mods', hookEvent: 'tool.call', outcome: 'caught', reasonKind: 'none' }),
+      L({ v: 2, mod: 'mod-faults', event: 'fault', plugin: 'switchboard', hookEvent: 'agent.spawn', outcome: 'expired', reasonKind: 'timeout' }),
+    ].join('\n')
+    const out = report(parse(text), 0, 7, undefined, ['danger-guard', 'switchboard', 'where-am-i'])
+    expect(out).toMatch(/danger-guard: no outcomes · loaded 1× \(v0\.4\.2\), 0 hook calls · 2 faults/)
+    expect(out).toMatch(/switchboard: no outcomes · 1 fault$/m)
+    expect(out).toMatch(/mod-faults: 3 hook faults recorded across mods/)
+    expect(out).toMatch(/No events: where-am-i$/m)
+  })
 })

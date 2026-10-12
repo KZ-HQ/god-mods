@@ -23,7 +23,8 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 | limit-guard | Asks before starting agents when the 5h/weekly usage window is nearly spent, records what a usage-limit cut-off stopped; `/limit-guard:resume` continues it |
 | long-turn-notify | macOS notification when a long turn finishes or Claude needs your input, in terminal sessions |
 | merge-gate | Holds `gh pr merge` until CI passes on the PR head; `/gate` runs the project's CI steps locally |
-| mod-stats | `/mod-stats [days]`: what each mod did, cost and saved |
+| mod-stats | `/mod-stats [days]`: what each mod did, cost and saved, and how often it faulted |
+| mod-faults | Passive: records any god-mod hook that fails, times out or is refused, and toasts at a mod's third fault in a session; `/mod-faults` |
 | next-steps | Suggests 2–3 likely next prompts after each turn; press 1/2/3 to draft one; `/next off` |
 | prompt-shaper | Expands your shorthand and attaches git state to each prompt; adds a project-toolchain note to the system prompt |
 | search-router | Steers web search to Exa and scraping to Firecrawl, and fails over when either runs out of credits; `/search-router` |
@@ -42,7 +43,7 @@ Every mod appends local JSON lines to `~/.claude/mods/metrics.jsonl`; nothing le
 - `turn`: once per turn, counting each hook's calls, e.g. `{"tool.call": 3, "command.run{goal}": 1}`
 - anything else: an outcome the mod recorded, e.g. merge-gate's `verdict`
 
-Rows hold counts, kinds and lengths only, never prompt, command or tool-input text. `/mod-stats` summarises them.
+Rows hold counts, kinds and lengths only, never prompt, command or tool-input text. `/mod-stats` summarises them. mod-faults adds a `fault` row per failed hook, naming the mod and event; it no longer writes `~/.claude/logs/god-mods-faults.jsonl`, which can be deleted.
 
 ## Development
 
