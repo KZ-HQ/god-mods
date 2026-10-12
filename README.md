@@ -35,6 +35,20 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 | where-am-i | Band with the session's goal and what Claude is doing; `/where` sets it (renamed from `/goal`, now a built-in), `/park` saves where you left off |
 | worktree-janitor | Lists agent worktrees with their PR state and removes merged ones on your say-so; `/worktrees` |
 
+## Plugin order
+
+Installed mods nest in the order of `enabledPlugins` in `~/.claude/settings.json`, first outermost; a plugin can't choose its place. mod-faults only sees faults in mods beneath it, so keep it first:
+
+```json
+"enabledPlugins": {
+  "mod-faults@god-mods": true,
+  "agent-fleet@god-mods": true,
+  ...
+}
+```
+
+Plugins installed later are appended, so they land beneath it. Reinstalling mod-faults moves it to the end again; its start-up toast and `/mod-faults` name any mods it can't see.
+
 ## Metrics
 
 Every mod appends local JSON lines to `~/.claude/mods/metrics.jsonl`; nothing leaves your machine. Rows (schema `v: 2`) carry `t`, `mod`, `event`, `ver`, `session` and `project`:
