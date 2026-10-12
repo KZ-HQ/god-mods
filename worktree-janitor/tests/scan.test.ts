@@ -89,3 +89,16 @@ describe('/worktrees clean', () => {
     expect(ran).toContain('git worktree prune')
   })
 })
+
+describe('pane', () => {
+  test('lists each scanned worktree with its branch and verdict', async ($, on) => {
+    repo(on, 'f5253b1aaaabbbbccccddddeeeeffff000011112')
+    await $.command.run(RUN)
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ plugin: 'worktree-janitor', surface, component: 'Pane', requestId: 'worktrees', props: { title: 'Worktrees', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} } })
+      expect(await ui.find({ type: 'Text', text: /agent-a119abc207ca9908a/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /feat-42/ })).toBeDefined()
+      await ui.unmount()
+    }
+  })
+})
