@@ -87,9 +87,13 @@ function engine(on: On, checks: string) {
   let merged = false
   on('session.cwd', () => ({ value: '/repo' }))
   on('ui.toast', () => ({ value: undefined }))
+  on('env.get', () => ({ value: '/home/t' }))
+  on('fs.exists', (_$, e) => ({ value: ['/repo', '/home/t/code/app'].includes(e.path) }))
   const calls: string[][] = []
+  const dirs: (string | undefined)[] = []
   on('process.run', (_$, e) => {
     calls.push([...e.argv])
+    if (e.argv[0].endsWith('/gh')) dirs.push(e.init?.cwd)
     const sub = e.argv.slice(1, 3).join(' ')
     const stdout =
       e.argv[0] === '/bin/zsh' ? '/opt/homebrew/bin/gh\n' : sub === 'pr view' ? '{"number":32,"isDraft":false,"state":"OPEN"}' : checks
@@ -102,7 +106,7 @@ function engine(on: On, checks: string) {
     return { result: { stdout: '', stderr: '', interrupted: false } }
   })
 
-  return Object.assign(() => merged, { calls })
+  return Object.assign(() => merged, { calls, dirs })
 }
 
 describe('merge hook', () => {
@@ -113,6 +117,22 @@ describe('merge hook', () => {
     expect(String(r.deny ?? r.text)).toMatch(/CI failed on PR 32: verify/)
     // gh is found through a login shell, since the desktop app's PATH lacks Homebrew
     expect(didMerge.calls.some(c => c[0] === '/opt/homebrew/bin/gh')).toBe(true)
+  })
+
+  test('expands ~ in a leading cd and runs gh there', async ($, on) => {
+    const didMerge = engine(on, '[{"name":"verify","bucket":"pass","state":"SUCCESS"}]')
+    await $.tool.call({ tool: 'Bash', command: 'cd ~/code/app && gh pr merge 32 --squash' })
+    expect(didMerge()).toBe(true)
+    expect(didMerge.dirs.length).toBeGreaterThan(0)
+    expect(didMerge.dirs.every(d => d === '/home/t/code/app')).toBe(true)
+  })
+
+  test('holds with a clear reason when the cd target does not exist, without running gh', async ($, on) => {
+    const didMerge = engine(on, '[{"name":"verify","bucket":"pass","state":"SUCCESS"}]')
+    const r = await $.tool.call({ tool: 'Bash', command: 'cd ~/nope && gh pr merge 32 --squash' })
+    expect(didMerge()).toBe(false)
+    expect(String(r.deny ?? r.text)).toMatch(/runs in \/home\/t\/nope, which does not exist/)
+    expect(didMerge.dirs.length).toBe(0)
   })
 
   test('lets an auto-merge through without checking', async ($, on) => {

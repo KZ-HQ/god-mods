@@ -114,10 +114,21 @@ const heldOnError = (error: unknown) => ({
   deny: `merge-gate could not check this merge (${error instanceof Error ? error.message : String(error)}), so it was held.`,
 })
 
+// The folder the merge command runs in: its leading `cd`, with ~ and $HOME expanded, against the session's folder.
+// A missing folder makes spawning gh fail as ENOENT naming gh itself, so callers check it exists.
+async function mergeCwd($: EngineInterface, dir: string | undefined): Promise<string> {
+  const sessionCwd = await $.session.cwd()
+  if (!dir) return sessionCwd
+  const home = (await $.env.get('HOME')) ?? ''
+  const expanded = home ? dir.replace(/^(~|\$HOME|\$\{HOME\})(?=\/|$)/, home) : dir
+
+  return join(sessionCwd, expanded)
+}
+
 // Undefined lets the merge go ahead; a string is why it is held.
 async function gate($: EngineInterface, merge: Merge): Promise<string | undefined> {
-  const sessionCwd = await $.session.cwd()
-  const cwd = merge.cwd ? join(sessionCwd, merge.cwd) : sessionCwd
+  const cwd = await mergeCwd($, merge.cwd)
+  if (!(await $.fs.exists(cwd))) return `merge-gate: the merge runs in ${cwd}, which does not exist, so CI could not be checked.`
   const target = [...(merge.selector ? [merge.selector] : []), ...(merge.repo ? ['--repo', merge.repo] : [])]
   const label = merge.selector ? `PR ${merge.selector}` : 'the PR for this branch'
 
