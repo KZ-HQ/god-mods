@@ -99,6 +99,12 @@
       "source": "./mod-stats",
       "description": "/mod-stats [days]: what each mod did, cost and saved",
       "version": "0.2.2"
+    },
+    {
+      "name": "mod-faults",
+      "source": "./mod-faults",
+      "description": "Passively logs god-mods hook faults (skipped, expired, kept, caught, rejected) to ~/.claude/logs/god-mods-faults.jsonl; /mod-faults shows a summary",
+      "version": "0.2.0"
     }
   ],
   "description": "Claude Code mods by KeithZhu"
