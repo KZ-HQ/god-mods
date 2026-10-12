@@ -98,7 +98,7 @@
       "name": "mod-stats",
       "source": "./mod-stats",
       "description": "/mod-stats [days]: what each mod did, cost and saved",
-      "version": "0.5.0"
+      "version": "0.5.1"
     },
     {
       "name": "mod-faults",

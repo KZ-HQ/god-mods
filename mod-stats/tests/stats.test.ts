@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
+import { TRIM } from '../hooks/register.tsx'
 import { parse, report } from '../hooks/stats.ts'
 
 const NOW = Date.parse('2026-10-10T12:00:00Z')
@@ -115,5 +116,22 @@ describe('stats', () => {
     expect(report(parse(blind.join('\n')), 0, 7)).toMatch(/mod-faults: no outcomes · .* · can't see 2: agent-fleet, danger-guard \(\/mod-faults\)/)
     const fixed = [...blind, at('2026-10-10T10:00:00Z', { mod: 'mod-faults', event: 'loaded', session: 's2', ver: '0.5.0' })]
     expect(report(parse(fixed.join('\n')), 0, 7)).not.toMatch(/can't see/)
+  })
+})
+
+describe('log size', () => {
+  test('each session start trims metrics.jsonl past 10 MB to the lines /mod-stats reads', async ($: any, on: any) => {
+    const ran: string[] = []
+    on('session.start', (_$: any, e: any) => ({ cwd: e.cwd }))
+    on('command.register', (_$: any, e: any) => ({ value: { command: e.name } }))
+    on('process.run', (_$: any, e: any) => {
+      ran.push(e.argv.join(' '))
+
+      return { value: { exitCode: 0, stdout: '', stderr: '' } }
+    })
+    await $.session.start({ cwd: '/r' })
+    await Promise.resolve()
+    expect(ran).toContain(`/bin/sh -c ${TRIM}`)
+    expect(TRIM).toMatch(/-gt 10000000 \] && tail -n 50000/)
   })
 })

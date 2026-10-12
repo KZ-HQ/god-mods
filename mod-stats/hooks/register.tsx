@@ -5,6 +5,10 @@ import { parse, report } from './stats.ts'
 const DAY_MS = 86_400_000
 // The newest lines are enough for any window /mod-stats shows
 const READ = 'tail -n 50000 "$HOME/.claude/mods/metrics.jsonl" 2>/dev/null || true'
+// The log only grows, and nothing reads past those lines: past 10 MB, keep just them. An append landing
+// between tail and mv is lost, which a metrics row can afford.
+export const TRIM =
+  'f="$HOME/.claude/mods/metrics.jsonl"; [ -f "$f" ] && [ "$(wc -c < "$f")" -gt 10000000 ] && tail -n 50000 "$f" > "$f.trim" && mv "$f.trim" "$f"; true'
 
 // <metrics: generated from shared/metrics.ts by shared/sync.sh>
 // Shared mod metrics (schema v2). Source of truth: ~/.claude/mods/shared/metrics.ts.
@@ -118,6 +122,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
     await $.command.register({ name: 'mod-stats', description: 'What each mod did, cost and saved: /mod-stats [days] [here]' })
+    void $.process.run(['/bin/sh', '-c', TRIM], { timeoutMs: 10_000 }).catch(() => undefined)
 
     return next(e)
   })
