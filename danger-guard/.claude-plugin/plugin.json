@@ -1,6 +1,6 @@
 {
   "name": "danger-guard",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Holds risky shell commands and writes to protected data, previews what they would change, and asks before they run",
   "author": {
     "name": "KeithZhu"
