@@ -1,6 +1,6 @@
 {
   "name": "where-am-i",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Band with the session's goal and what Claude is doing; /goal sets it, /park saves where you left off",
   "author": {
     "name": "KeithZhu"

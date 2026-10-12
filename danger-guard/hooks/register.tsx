@@ -88,7 +88,7 @@ async function confirm($: EngineInterface, question: string): Promise<boolean> {
 // A guard that fails must hold the call, not wave it through
 const heldOnError = (tool: string, error: unknown) => ({
   deny:
-    `danger-guard could not check this ${tool} call (${error instanceof Error ? error.message : String(error)}), so it was held. ` +
+    `danger-guard could not check this ${tool} call (${message(error)}), so it was held. ` +
     'Ask the user to run it themselves or to turn the guard off with /guard off.',
 })
 

@@ -21,14 +21,24 @@ const BAND = {
   props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 100, scroll: { offset: 0, bodyRows: 4 }, view: {} },
 } as const
 
-const measure = (percent: number) => ({
+const measure = (percent: number, usd = 1.5) => ({
   context: { tokens: percent * 2000, window: 200_000, percent },
   rateLimits: [{ kind: 'five_hour', percentUsed: 34 }],
-  cost: { usd: 1.5 },
+  cost: { usd },
   changed: ['context' as const],
 })
 
 describe('context-gauge band', () => {
+  test('formats cost like every god-mod: three decimals under $1, two from $1', async ($, on) => {
+    engine(on)
+    for (const [usd, shown] of [[0.1234, /session \$0\.123/], [12.345, /session \$12\.35/]] as const) {
+      await $.session.measure(measure(40, usd))
+      const ui = await $.ui.mount({ plugin: 'context-gauge', surface: 'terminal', ...BAND })
+      expect(await ui.find({ type: 'Text', text: shown })).toBeDefined()
+      await ui.unmount()
+    }
+  })
+
   test('shows fill and cost, and offers Compact only when hot', async ($, on) => {
     engine(on)
     for (const surface of ['terminal', 'desktop'] as const) {

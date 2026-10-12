@@ -10,16 +10,6 @@ const HOLD = "Don't merge"
 
 const join = (root: string, rel: string) => (rel === '.' || rel === '' ? root : rel.startsWith('/') ? rel : `${root}/${rel.replace(/^\.\//, '')}`)
 
-async function repoRoot($: EngineInterface): Promise<string | undefined> {
-  try {
-    const r = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { timeoutMs: 5000 })
-
-    return r.exitCode === 0 ? r.stdout.trim() : undefined
-  } catch {
-    return undefined
-  }
-}
-
 // Where the steps come from, first match wins: .claude/gate.json, CI workflows, Makefile, package.json.
 async function findSteps($: EngineInterface, root: string): Promise<{ source: string; steps: Step[] }> {
   const read = (p: string) => $.fs.read(`${root}/${p}`).catch(() => undefined)
@@ -89,21 +79,6 @@ async function ask($: EngineInterface, question: string): Promise<boolean> {
 }
 
 // The desktop app's PATH has no Homebrew, so `gh` alone isn't found there: ask a login shell once
-let ghPath: string | undefined
-
-async function findGh($: EngineInterface): Promise<string> {
-  if (ghPath) return ghPath
-  try {
-    const r = await $.process.run(['/bin/zsh', '-lc', 'command -v gh'], { timeoutMs: 5000 })
-    const found = r.stdout.trim().split('\n').pop()
-    if (r.exitCode === 0 && found?.startsWith('/')) return (ghPath = found)
-  } catch {
-    // No zsh: fall back to PATH
-  }
-
-  return 'gh'
-}
-
 async function gh($: EngineInterface, args: string[], cwd: string | undefined) {
   const r = await $.process.run([await findGh($), ...args], { cwd, timeoutMs: 30000 })
 
@@ -111,7 +86,7 @@ async function gh($: EngineInterface, args: string[], cwd: string | undefined) {
 }
 
 const heldOnError = (error: unknown) => ({
-  deny: `merge-gate could not check this merge (${error instanceof Error ? error.message : String(error)}), so it was held.`,
+  deny: `merge-gate could not check this merge (${message(error)}), so it was held.`,
 })
 
 // The folder the merge command runs in: its leading `cd`, with ~ and $HOME expanded, against the session's folder.
@@ -258,6 +233,33 @@ function count($: EngineInterface, event: string): void {
   if (event === 'turn.complete') flush($)
 }
 // </metrics>
+
+// <gh: generated from shared/gh.ts by shared/sync.sh>
+let ghPath: string | undefined
+
+// gh's absolute path, found through a login shell: the desktop app's PATH lacks Homebrew. Falls back to plain gh.
+async function findGh($: EngineInterface): Promise<string> {
+  if (ghPath) return ghPath
+  try {
+    const r = await $.process.run(['/bin/zsh', '-lc', 'command -v gh'], { timeoutMs: 5000 })
+    const found = r.stdout.trim().split('\n').pop()
+    if (r.exitCode === 0 && found?.startsWith('/')) return (ghPath = found)
+  } catch {
+    // No zsh: fall back to PATH
+  }
+
+  return 'gh'
+}
+// </gh>
+
+// <git: generated from shared/git.ts by shared/sync.sh>
+// The git top level of cwd (the session's folder when omitted); undefined outside a repository or when git fails
+async function repoRoot($: EngineInterface, cwd?: string): Promise<string | undefined> {
+  const r = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { ...(cwd ? { cwd } : {}), timeoutMs: 5000 }).catch(() => undefined)
+
+  return r && r.exitCode === 0 ? r.stdout.trim() || undefined : undefined
+}
+// </git>
 
 export const register: Register = on => {
   logTurns(on)

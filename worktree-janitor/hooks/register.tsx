@@ -24,21 +24,6 @@ async function git($: EngineInterface, args: string[], cwd?: string) {
 }
 
 // The desktop app's PATH has no Homebrew, so `gh` alone isn't found there: ask a login shell once
-let ghPath: string | undefined
-
-async function findGh($: EngineInterface): Promise<string> {
-  if (ghPath) return ghPath
-  try {
-    const r = await $.process.run(['/bin/zsh', '-lc', 'command -v gh'], { timeoutMs: 5000 })
-    const found = r.stdout.trim().split('\n').pop()
-    if (r.exitCode === 0 && found?.startsWith('/')) return (ghPath = found)
-  } catch {
-    // No zsh: fall back to PATH
-  }
-
-  return 'gh'
-}
-
 type Pr = { state?: string; url?: string; headRefOid?: string }
 
 async function prOf($: EngineInterface, branch: string, root: string): Promise<Pr> {
@@ -227,6 +212,24 @@ function count($: EngineInterface, event: string): void {
   if (event === 'turn.complete') flush($)
 }
 // </metrics>
+
+// <gh: generated from shared/gh.ts by shared/sync.sh>
+let ghPath: string | undefined
+
+// gh's absolute path, found through a login shell: the desktop app's PATH lacks Homebrew. Falls back to plain gh.
+async function findGh($: EngineInterface): Promise<string> {
+  if (ghPath) return ghPath
+  try {
+    const r = await $.process.run(['/bin/zsh', '-lc', 'command -v gh'], { timeoutMs: 5000 })
+    const found = r.stdout.trim().split('\n').pop()
+    if (r.exitCode === 0 && found?.startsWith('/')) return (ghPath = found)
+  } catch {
+    // No zsh: fall back to PATH
+  }
+
+  return 'gh'
+}
+// </gh>
 
 export const register: Register = on => {
   logTurns(on)

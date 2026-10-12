@@ -26,8 +26,6 @@ const toSnap = (u: Pick<SessionUsage, 'context' | 'rateLimits' | 'cost'>): Gauge
 })
 
 const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
-const usd = (n: number) => `$${n < 10 ? n.toFixed(2) : n.toFixed(1)}`
-
 // Says what happened: a compaction takes a while, and a refusal used to vanish
 async function compactNow($: EngineInterface): Promise<void> {
   $.ui.status('context-gauge: compacting…')
@@ -132,6 +130,13 @@ function count($: EngineInterface, event: string): void {
   if (event === 'turn.complete') flush($)
 }
 // </metrics>
+
+// <money: generated from shared/money.ts by shared/sync.sh>
+// US dollars: three decimals under $1, where cents hide the cost of a cheap call; two from $1
+function usd(n: number): string {
+  return `$${Math.abs(n) < 1 ? n.toFixed(3) : n.toFixed(2)}`
+}
+// </money>
 
 export const register: Register = on => {
   // Baseline for the running main-loop turn

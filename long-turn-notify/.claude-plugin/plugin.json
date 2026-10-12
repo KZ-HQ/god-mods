@@ -1,6 +1,6 @@
 {
   "name": "long-turn-notify",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "macOS notification when a long turn finishes, or when Claude needs your input, in terminal sessions",
   "userConfig": {
     "thresholdSeconds": {

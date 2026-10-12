@@ -1,6 +1,6 @@
 {
   "name": "merge-gate",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Holds gh pr merge until CI passes on the PR head; /gate runs the project CI steps locally without a Claude turn",
   "author": {
     "name": "KeithZhu"
