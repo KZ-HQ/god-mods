@@ -172,3 +172,56 @@ describe('merge hook', () => {
     expect(didRun()).toBe(true)
   })
 })
+
+describe('/gate', () => {
+  // A repo at /repo whose .claude/gate.json has lint then test; test exits 1 when failTest
+  function repo(on: On, opts: { inRepo?: boolean; failTest?: boolean } = {}) {
+    const ran: string[] = []
+    const ok = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+    on('clock.now', () => ({ value: 0 }))
+    on('session.cwd', () => ({ value: '/repo' }))
+    on('ui.status', () => ({ value: undefined }))
+    on('fs.read', (_$, e) => {
+      if (e.path === '/repo/.claude/gate.json') return { value: JSON.stringify({ steps: [{ name: 'lint', run: 'npm run lint' }, { name: 'test', run: 'npm test', cwd: 'app' }] }) }
+      throw new Error('ENOENT')
+    })
+    on('process.run', (_$, e) => {
+      if (e.argv[3] === 'mod-metrics') return ok('')
+      if (e.argv[0] === 'git') return opts.inRepo === false ? ok('', 128) : ok('/repo\n')
+      ran.push(`${e.init?.cwd}: ${e.argv[2]}`)
+
+      return e.argv[2] === 'npm test' && opts.failTest ? ok('1 failing\nAssertionError: boom', 1) : ok('fine')
+    })
+
+    return ran
+  }
+
+  test('runs each step in its folder and reports passes', async ($, on) => {
+    const ran = repo(on)
+    const out = (await $.command.run({ command: 'gate', args: '' })).text
+    expect(ran).toEqual(['/repo: npm run lint', '/repo/app: npm test'])
+    expect(out).toMatch(/gate: 2 steps from \.claude\/gate\.json/)
+    expect(out).toMatch(/✔ lint/)
+    expect(out).toMatch(/✔ test/)
+  })
+
+  test('stops at the first failing step and shows its output tail', async ($, on) => {
+    repo(on, { failTest: true })
+    const out = (await $.command.run({ command: 'gate', args: '' })).text
+    expect(out).toMatch(/✘ test \(exit 1/)
+    expect(out).toMatch(/AssertionError: boom/)
+  })
+
+  test('list shows the steps without running them', async ($, on) => {
+    const ran = repo(on)
+    const out = (await $.command.run({ command: 'gate', args: 'list' })).text
+    expect(out).toBe('From .claude/gate.json:\n  [.] npm run lint\n  [app] npm test')
+    expect(ran).toEqual([])
+  })
+
+  test('outside a git repository it runs nothing', async ($, on) => {
+    const ran = repo(on, { inRepo: false })
+    expect((await $.command.run({ command: 'gate', args: '' })).text).toBe('gate: not in a git repository.')
+    expect(ran).toEqual([])
+  })
+})

@@ -69,3 +69,20 @@ describe('modes', () => {
   })
 })
 
+
+describe('/route off', () => {
+  test('leaves every spawn on the model asked for, and says it is off', async ($, on) => {
+    mock.store(on)
+    on('ui.toast', () => ({ value: undefined }))
+    const models: (string | undefined)[] = []
+    on('agent.spawn', (_$, e) => {
+      models.push(e.model)
+
+      return { model: e.model ?? 'opus', agentId: `a${models.length}` }
+    })
+    const RUN = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
+    expect((await $.command.run({ command: 'route', args: 'off', ...RUN })).text).toBe('switchboard: off.')
+    await $.agent.spawn(SPAWN('Find where reminders are sent'))
+    expect(models).toEqual([undefined])
+  })
+})

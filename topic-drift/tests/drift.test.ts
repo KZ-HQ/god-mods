@@ -32,3 +32,44 @@ describe('band', () => {
     expect(await ui.find({ key: 'dismiss' })).toBeUndefined()
   })
 })
+
+describe('what counts', () => {
+  const engine = (on: Parameters<Parameters<typeof test>[1]>[1]) => {
+    on('prompt.submit', (_$, e) => ({ text: e.text }))
+    on('session.end', () => ({ sessionId: 's1' }))
+    on('ui.render', { component: 'AbovePrompt' }, ($, e) => h($.ui.resolve(e).Box, {}) as never)
+  }
+  const shown = async ($: Parameters<Parameters<typeof test>[1]>[0]) => {
+    const ui = await $.ui.mount({ plugin: 'topic-drift', surface: 'terminal', ...BAND })
+    const found = (await ui.find({ key: 'dismiss' })) !== undefined
+    await ui.unmount()
+
+    return found
+  }
+
+  test('slash commands and prompts the person did not type never count or warn', async ($, on) => {
+    engine(on)
+    const send = (text: string, kind = 'composer') => $.prompt.submit({ text, wait: false, origin: { kind } as never })
+    await send('scope the reminders module to households with tests')
+    await send('/compact keep the reminders module notes')
+    await send('recommend espresso grinder budget around three hundred dollars', 'scheduled-trigger')
+    expect(await shown($)).toBe(false)
+    // Only one counted prompt so far, so a drifting one is still too early to warn about
+    await send('recommend espresso grinder budget around three hundred dollars')
+    expect(await shown($)).toBe(false)
+  })
+
+  test('a session end (/clear) forgets the topic and the warning', async ($, on) => {
+    engine(on)
+    const send = (text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
+    await send('scope the reminders module to households with tests')
+    await send('reminders module tests failing on household scoping')
+    await send('recommend a good espresso grinder budget around three hundred dollars')
+    expect(await shown($)).toBe(true)
+
+    await $.session.end({ reason: 'clear' } as never)
+    expect(await shown($)).toBe(false)
+    await send('recommend a good espresso grinder budget around three hundred dollars')
+    expect(await shown($)).toBe(false)
+  })
+})

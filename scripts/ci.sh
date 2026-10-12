@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs every god-mods check: validate + test each mod, metrics sync, manifest versions.
+# Runs every god-mods check: validate + test each mod, shared-code sync, manifest versions, test coverage.
 # Same script locally and in CI. Exits non-zero if anything fails.
 cd "$(dirname "$0")/.." || exit 1
 fail=0
@@ -17,6 +17,7 @@ for n in $(jq -r '.plugins[].name' .claude-plugin/marketplace.json); do
   [ -d "$n" ] || { echo "marketplace lists missing mod: $n"; fail=1; }
 done
 sh shared/sync.sh --check || { echo "metrics sync FAILED: run sh shared/sync.sh"; fail=1; }
+python3 scripts/check-coverage.py || { echo "coverage FAILED: every command needs a test, every mod 4+ tests"; fail=1; }
 rm -f /tmp/validate.$$ /tmp/test.$$
 [ $fail = 0 ] && echo "ALL CHECKS PASSED"
 exit $fail

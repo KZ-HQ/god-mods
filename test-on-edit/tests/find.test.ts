@@ -87,3 +87,20 @@ describe('hook', () => {
     expect(t.context()).toBeUndefined()
   })
 })
+
+describe('/test-on-edit', () => {
+  test('off stops runs for the session; on resumes them', async ($, on) => {
+    const t = engine(on, 0)
+    expect((await $.command.run({ command: 'test-on-edit', args: 'off' })).text).toBe('off for this session.')
+    await $.tool.call(EDIT)
+    await $.turn.complete(END)
+    await settle($ as never, () => t.ran.length > 0)
+    expect(t.ran).toEqual([])
+
+    expect((await $.command.run({ command: 'test-on-edit', args: 'on' })).text).toBe('on.')
+    await $.tool.call(EDIT)
+    await $.turn.complete(END)
+    await settle($ as never, () => t.toasts.length > 0)
+    expect(t.ran).toHaveLength(1)
+  })
+})

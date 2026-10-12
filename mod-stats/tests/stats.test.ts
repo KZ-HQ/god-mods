@@ -83,4 +83,27 @@ describe('stats', () => {
     expect(out).toMatch(/mod-faults: 3 hook faults recorded across mods/)
     expect(out).toMatch(/No events: where-am-i$/m)
   })
+
+  test('v1 rows (no v, no project) still count, and rows missing fields are skipped', async () => {
+    const text = [
+      JSON.stringify({ t: '2026-10-10T10:00:00Z', mod: 'secret-scrubber', event: 'masked' }),
+      JSON.stringify({ t: '2026-10-10T10:00:00Z', mod: 'secret-scrubber' }),
+      JSON.stringify({ mod: 'secret-scrubber', event: 'masked' }),
+      '',
+      '   ',
+    ].join('\n')
+    const rows = parse(text)
+    expect(rows).toHaveLength(1)
+    expect(report(rows, 0, 7)).toMatch(/secret-scrubber: 1 outputs masked/)
+  })
+
+  test('/mod-stats with an empty log says nothing is recorded yet', async ($: any, on: any) => {
+    on('env.get', () => ({ value: '/home/t' }))
+    on('fs.read', () => { throw new Error('ENOENT') })
+    on('process.run', () => ({ value: { exitCode: 0, stdout: '', stderr: '' } }))
+    on('clock.now', () => ({ value: NOW }))
+    const out = await $.command.run({ command: 'mod-stats', args: '' })
+    expect(out.text).toMatch(/^No mod events recorded yet/)
+  })
 })
+
