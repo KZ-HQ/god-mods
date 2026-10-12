@@ -2,11 +2,6 @@
 
 export type Row = { t: string; mod: string; event: string; project?: string; [k: string]: unknown }
 
-export const MODS = [
-  'agent-fleet', 'context-gauge', 'danger-guard', 'limit-guard', 'long-turn-notify', 'merge-gate', 'next-steps', 'prompt-shaper',
-  'search-router', 'secret-scrubber', 'switchboard', 'test-on-edit', 'topic-drift', 'where-am-i', 'worktree-janitor',
-]
-
 export function parse(text: string): Row[] {
   const rows: Row[] = []
   for (const line of text.split('\n')) {
@@ -95,13 +90,14 @@ function telemetry(rows: Row[]): string {
   return ` · loaded ${loads.length}× (v${vers.join(', v') || '?'}), ${calls} hook calls`
 }
 
-export function report(all: Row[], sinceMs: number, days: number, project?: string): string {
+// mods: every mod in the marketplace, so ones with no rows show under No events
+export function report(all: Row[], sinceMs: number, days: number, project?: string, mods: string[] = []): string {
   const rows = all.filter(r => Date.parse(r.t) >= sinceMs && (!project || r.project === project))
   const outcomes = rows.filter(r => !TELEMETRY.has(r.event))
-  const mods = [...new Set([...MODS, ...rows.map(r => r.mod)])].sort()
+  const names = [...new Set([...mods, ...rows.map(r => r.mod)])].sort()
   const out = [`Mod activity, last ${days} day${days === 1 ? '' : 's'}${project ? ` in ${project}` : ''} (${outcomes.length} events):`]
   const quiet: string[] = []
-  for (const mod of mods) {
+  for (const mod of names) {
     const mine = rows.filter(r => r.mod === mod)
     const acts = mine.filter(r => !TELEMETRY.has(r.event))
     if (mine.length === 0) quiet.push(mod)

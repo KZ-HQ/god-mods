@@ -95,6 +95,27 @@ function count($: EngineInterface, event: string): void {
 }
 // </metrics>
 
+// <modlist: generated from shared/modlist.ts by shared/sync.sh>
+// The god-mods mod list, read from the marketplace's own marketplace.json. Source of truth: ~/.claude/mods/shared/modlist.ts.
+// shared/sync.sh inlines it between the modlist markers in each mod that uses it. Edit here, run sync.sh, never edit an inlined copy.
+// Undefined when the god-mods marketplace is not installed or its manifest is unreadable.
+
+async function godModList($: EngineInterface): Promise<{ names: string[]; file: string } | undefined> {
+  try {
+    const home = await $.env.get('HOME')
+    const known = JSON.parse(await $.fs.read(`${home}/.claude/plugins/known_marketplaces.json`))
+    const root = known['god-mods']?.installLocation ?? known['god-mods']?.source?.path
+    if (!root) return undefined
+    const file = `${root}/.claude-plugin/marketplace.json`
+    const names = (JSON.parse(await $.fs.read(file)).plugins as { name: string }[]).map(p => p.name)
+
+    return names.length ? { names, file } : undefined
+  } catch {
+    return undefined
+  }
+}
+// </modlist>
+
 export const register: Register = on => {
   logTurns(on)
 
@@ -114,6 +135,8 @@ export const register: Register = on => {
     const rows = parse(r.stdout)
     if (rows.length === 0) return { text: 'No mod events recorded yet. They collect in ~/.claude/mods/metrics.jsonl as the mods act.' }
 
-    return { text: report(rows, (await $.clock.now()) - days * DAY_MS, days, project) }
+    const mods = (await godModList($))?.names ?? []
+
+    return { text: report(rows, (await $.clock.now()) - days * DAY_MS, days, project, mods) }
   })
 }

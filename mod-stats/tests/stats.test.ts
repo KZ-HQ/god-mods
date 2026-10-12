@@ -18,7 +18,7 @@ describe('stats', () => {
       '{torn',
       JSON.stringify({ t: '2026-09-01T00:00:00Z', mod: 'danger-guard', event: 'asked', answer: 'run' }),
     ].join('\n')
-    const out = report(parse(text), NOW - 7 * 86_400_000, 7)
+    const out = report(parse(text), NOW - 7 * 86_400_000, 7, undefined, ['merge-gate', 'switchboard'])
     expect(out).toMatch(/switchboard: 2 agents, 1 rerouted · spent \$3\.00 · saved \$1\.00/)
     expect(out).toMatch(/next-steps: 2 suggestion sets, 1 clicked \(50%\)/)
     expect(out).toMatch(/danger-guard: 1 risky commands asked about, you cancelled 1/)
@@ -44,5 +44,29 @@ describe('stats', () => {
     expect(out).toMatch(/merge-gate: 1 merges checked: 1 pass.* · loaded 1× \(v0\.2\.0\), 0 hook calls/)
     expect(out).toMatch(/\(1 events\)/)
     expect(out).not.toMatch(/No events: .*search-router/)
+  })
+
+  test('/mod-stats lists every mod in marketplace.json, including ones with no rows', async ($: any, on: any) => {
+    const files: Record<string, string> = {
+      '/home/t/.claude/plugins/known_marketplaces.json': JSON.stringify({ 'god-mods': { installLocation: '/m' } }),
+      '/m/.claude-plugin/marketplace.json': JSON.stringify({ plugins: [{ name: 'brand-new-mod' }, { name: 'switchboard' }] }),
+    }
+    on('env.get', () => ({ value: '/home/t' }))
+    on('fs.read', ($: any, e: any) => ({ value: files[e.path] ?? '' }))
+    on('process.run', () => ({ value: { exitCode: 0, stdout: L({ v: 2, mod: 'switchboard', event: 'loaded', ver: '1.0.0' }), stderr: '' } }))
+    on('clock.now', () => ({ value: NOW }))
+    const out = await $.command.run({ command: 'mod-stats', args: '' })
+    expect(out.text).toMatch(/No events: brand-new-mod/)
+    expect(out.text).toMatch(/switchboard: no outcomes/)
+  })
+
+  test('/mod-stats still reports when the marketplace manifest is unreadable', async ($: any, on: any) => {
+    on('env.get', () => ({ value: '/home/t' }))
+    on('fs.read', () => { throw new Error('ENOENT') })
+    on('process.run', () => ({ value: { exitCode: 0, stdout: L({ v: 2, mod: 'switchboard', event: 'loaded', ver: '1.0.0' }), stderr: '' } }))
+    on('clock.now', () => ({ value: NOW }))
+    const out = await $.command.run({ command: 'mod-stats', args: '' })
+    expect(out.text).toMatch(/switchboard: no outcomes/)
+    expect(out.text).not.toMatch(/No events/)
   })
 })
