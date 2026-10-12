@@ -111,14 +111,19 @@ export function judge(checks: readonly Check[]): Verdict {
 }
 
 // Quoted text (commit messages, echo arguments) is data, never a command.
-const unquoted = (command: string) => command.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""')
+// Heredoc bodies are text, not commands: drop each from its << line to its terminator line
+const withoutHeredocs = (command: string) =>
+  command.replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?^\s*\2\s*$/gm, '')
+// Blanks quoted text but keeps its length, so offsets in the result index the original
+const unquoted = (command: string) => command.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, q => `"${' '.repeat(q.length - 2)}"`)
 
 export type Merge = { selector?: string; repo?: string; cwd?: string }
 
 // The PR a `gh pr merge` names (number, URL or branch), its repo flag, and a leading `cd`.
 // Undefined when there is no merge to gate: no such command, `--help`, or `--auto`
 // (which queues the merge for GitHub to perform once its own requirements pass).
-export function parseMerge(command: string): Merge | undefined {
+export function parseMerge(full: string): Merge | undefined {
+  const command = withoutHeredocs(full)
   // Only as a command of its own: at the start, or after ; && || |
   const m = unquoted(command).match(/(?:^|[;&|]\s*)\s*gh\s+pr\s+merge(?=\s|$|[;&|])([^;&|]*)/)
   if (!m) return undefined

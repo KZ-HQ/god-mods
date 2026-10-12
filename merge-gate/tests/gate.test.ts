@@ -65,6 +65,12 @@ describe('parseMerge', () => {
     expect(parseMerge("echo 'run gh pr merge 32 later'")).toBeUndefined()
     expect(parseMerge('echo gh pr merge 32')).toBeUndefined()
     expect(parseMerge('git push && gh pr merge 32 -t "Ship; it"')?.selector).toBe('32')
+    // A heredoc body mentioning a merge is text, even with an unbalanced quote in it
+    const body = `gh pr create --title T --body "$(cat <<'EOF'\nit doesn't: \`cd ~/x && gh pr merge 5\` failed\nEOF\n)"`
+    expect(parseMerge(body)).toBeUndefined()
+    expect(parseMerge(`${body} && gh pr merge --squash --auto`)).toBeUndefined()
+    expect(parseMerge(`${body} && gh pr merge 7 --squash`)?.selector).toBe('7')
+    expect(parseMerge(`cat > /tmp/b <<EOF\ngh pr merge 9\nEOF`)).toBeUndefined()
   })
 
   test('reads an MCP merge tool call', async () => {
