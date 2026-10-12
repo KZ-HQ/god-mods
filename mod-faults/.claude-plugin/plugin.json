@@ -1,0 +1,8 @@
+{
+  "name": "mod-faults",
+  "version": "0.2.0",
+  "description": "Logs god-mods hook faults (skipped, expired, kept, caught, rejected) to ~/.claude/logs/god-mods-faults.jsonl",
+  "author": {
+    "name": "KeithZhu"
+  }
+}
