@@ -152,12 +152,23 @@ async function watch<N extends EventName>($: EngineInterface, e: Parameters<Next
   }
 }
 
+// Every god-mod hooks session.start, so once it settles, a listed mod missing from the trace is
+// above this one in the chain (or not enabled): its faults are invisible here.
+const blind = () => [...GOD_MODS].filter(m => !seen.has(m)).sort()
+const FIX = 'Move "mod-faults@god-mods" to the top of enabledPlugins in ~/.claude/settings.json: plugins nest in that order, first outermost.'
+
 async function start($: EngineInterface, e: Parameters<Next<'session.start'>>[0], next: Next<'session.start'>) {
   count($, 'session.start')
   await loadModList($)
   await $.command.register({ name: 'mod-faults', description: 'Show god-mods faults this session and which mods are watched' })
+  const started = await watch($, e, next)
+  const unseen = blind()
+  if (unseen.length) {
+    track($, 'mod-faults', 'blind', { mods: unseen, of: GOD_MODS.size })
+    $.ui.toast(`mod-faults: can't see faults in ${unseen.length} of ${GOD_MODS.size} god-mods above it in the chain (/mod-faults)`)
+  }
 
-  return watch($, e, next)
+  return started
 }
 
 async function turnEnd($: EngineInterface, e: Parameters<Next<'turn.complete'>>[0], next: Next<'turn.complete'>) {
@@ -169,9 +180,11 @@ async function turnEnd($: EngineInterface, e: Parameters<Next<'turn.complete'>>[
 async function report() {
   const faults = [...counts].map(([p, n]) => `  ${p}: ${n}`).join('\n') || '  none'
   const watched = [...seen].sort().join(', ') || 'none yet'
+  const unseen = blind()
+  const blindText = unseen.length ? `\nNot visible (above this mod, or not enabled): ${unseen.join(', ')}\n${FIX}` : ''
 
   return {
-    text: `god-mods faults this session:\n${faults}\nWatched beneath this mod: ${watched}\nMod list (${GOD_MODS.size}): ${listSource}\nRecorded in ~/.claude/mods/metrics.jsonl; /mod-stats shows faults across sessions`,
+    text: `god-mods faults this session:\n${faults}\nWatched beneath this mod: ${watched}${blindText}\nMod list (${GOD_MODS.size}): ${listSource}\nRecorded in ~/.claude/mods/metrics.jsonl; /mod-stats shows faults across sessions`,
   }
 }
 

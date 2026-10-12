@@ -40,7 +40,9 @@ function engine(on: any, names: string[] | null) {
   return { rows, toasts, faults: () => rows.filter(r => r.event === 'fault') }
 }
 
-const settle = () => new Promise(r => setTimeout(r, 0))
+const settle = async () => {
+  for (let i = 0; i < 50; i++) await Promise.resolve()
+}
 const start = ($: any) => $.session.start({ cwd: '/w', surface: null, isInteractive: false })
 
 test('reads the mod list from marketplace.json', { plugins: [{
@@ -92,4 +94,29 @@ test('without a readable manifest, a plugin not installed from god-mods is not c
   const out = await $.command.run({ command: 'mod-faults', args: '' })
   expect(out.text).not.toContain('danger-guard: 1')
   expect(out.text).toContain('Mod list (0): unavailable')
+})
+
+// An inline plugin sits beneath mod-faults; one that hooks session.start is seen there
+const beneath = (name: string) => ({ name, register(on: any) { on('session.start', async ($: any, e: any, next: any) => next(e)) } })
+
+test('names the god-mods it cannot see, once, with the fix', { plugins: [beneath('seen-mod')] }, async ($: any, on: any) => {
+  const m = engine(on, ['seen-mod', 'above-mod', 'also-above'])
+  await start($)
+  await settle()
+  const rows = m.rows.filter(r => r.event === 'blind')
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toMatchObject({ mods: ['above-mod', 'also-above'], of: 3 })
+  expect(m.toasts.filter(t => /can't see faults in 2 of 3/.test(t))).toHaveLength(1)
+  const out = (await $.command.run({ command: 'mod-faults', args: '' })).text
+  expect(out).toContain('Not visible (above this mod, or not enabled): above-mod, also-above')
+  expect(out).toContain('top of enabledPlugins')
+})
+
+test('says nothing about blind spots when it sees every god-mod', { plugins: [beneath('seen-mod')] }, async ($: any, on: any) => {
+  const m = engine(on, ['seen-mod'])
+  await start($)
+  await settle()
+  expect(m.rows.filter(r => r.event === 'blind')).toHaveLength(0)
+  expect(m.toasts.filter(t => /can't see/.test(t))).toHaveLength(0)
+  expect((await $.command.run({ command: 'mod-faults', args: '' })).text).not.toContain('Not visible')
 })
