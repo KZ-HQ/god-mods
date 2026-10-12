@@ -7,6 +7,7 @@ const RUN = 'Run it'
 const CANCEL = 'Cancel'
 const MAX_QUESTION = 1800
 const PREVIEW_TIMEOUT_MS = 5000
+const SAFE_PATH = '/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin'
 
 const isPattern = (t: string) => /[*?[\]$`{}~]/.test(t)
 
@@ -23,7 +24,11 @@ async function preview($: EngineInterface, risk: Risk, sessionCwd: string): Prom
   const cwd = resolveCwd(sessionCwd, risk.cwd)
   const run = async (argv: string[]) => {
     try {
-      const r = await $.process.run(argv, { cwd, timeoutMs: PREVIEW_TIMEOUT_MS })
+      // The hook runtime spawns without a usable PATH, so resolve binaries through /bin/sh.
+      const r = await $.process.run(['/bin/sh', '-c', `PATH="${SAFE_PATH}:$PATH" exec "$@"`, 'danger-guard', ...argv], {
+        cwd,
+        timeoutMs: PREVIEW_TIMEOUT_MS,
+      })
 
       return r.exitCode === 0 ? r.stdout.trim() : `(${r.stderr.trim() || `exit ${r.exitCode}`})`
     } catch (err) {
