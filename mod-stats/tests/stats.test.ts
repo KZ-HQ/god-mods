@@ -105,5 +105,15 @@ describe('stats', () => {
     const out = await $.command.run({ command: 'mod-stats', args: '' })
     expect(out.text).toMatch(/^No mod events recorded yet/)
   })
-})
 
+  test("mod-faults' blind spot shows only when its latest session reported one", async () => {
+    const at = (t: string, o: object) => JSON.stringify({ t, project: 'my-app', v: 2, ...o })
+    const blind = [
+      at('2026-10-10T09:00:00Z', { mod: 'mod-faults', event: 'loaded', session: 's1', ver: '0.5.0' }),
+      at('2026-10-10T09:00:01Z', { mod: 'mod-faults', event: 'blind', session: 's1', mods: ['agent-fleet', 'danger-guard'], of: 16 }),
+    ]
+    expect(report(parse(blind.join('\n')), 0, 7)).toMatch(/mod-faults: no outcomes · .* · can't see 2: agent-fleet, danger-guard \(\/mod-faults\)/)
+    const fixed = [...blind, at('2026-10-10T10:00:00Z', { mod: 'mod-faults', event: 'loaded', session: 's2', ver: '0.5.0' })]
+    expect(report(parse(fixed.join('\n')), 0, 7)).not.toMatch(/can't see/)
+  })
+})

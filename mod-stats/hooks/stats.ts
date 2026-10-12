@@ -87,7 +87,7 @@ function line(mod: string, rows: Row[]): string {
 }
 
 // v2 rows the shared metrics block writes for every mod; everything else is an outcome row
-const TELEMETRY = new Set(['loaded', 'turn'])
+const TELEMETRY = new Set(['loaded', 'turn', 'blind'])
 
 function telemetry(rows: Row[]): string {
   const loads = rows.filter(r => r.event === 'loaded')
@@ -111,13 +111,18 @@ export function report(all: Row[], sinceMs: number, days: number, project?: stri
     const of = r.plugin.split('@')[0]!
     faults.set(of, (faults.get(of) ?? 0) + 1)
   }
+  // mod-faults can't see mods above it in the chain; only its latest session's view counts
+  const latest = rows.filter(r => r.mod === 'mod-faults' && r.event === 'loaded').at(-1)
+  const blindRow = latest && rows.filter(r => r.mod === 'mod-faults' && r.event === 'blind' && r.session === latest.session).at(-1)
+  const blindTo = Array.isArray(blindRow?.mods) ? (blindRow.mods as string[]) : []
   const quiet: string[] = []
   for (const mod of [...new Set([...names, ...faults.keys()])].sort()) {
     const mine = rows.filter(r => r.mod === mod)
     const acts = mine.filter(r => !TELEMETRY.has(r.event))
     const faulted = faults.get(mod) ? ` · ${faults.get(mod)} fault${faults.get(mod) === 1 ? '' : 's'}` : ''
+    const blindNote = mod === 'mod-faults' && blindTo.length ? ` · can't see ${blindTo.length}: ${blindTo.join(', ')} (/mod-faults)` : ''
     if (mine.length === 0 && !faulted) quiet.push(mod)
-    else out.push(`  ${mod}: ${acts.length ? line(mod, acts) : 'no outcomes'}${mine.length ? telemetry(mine) : ''}${faulted}`)
+    else out.push(`  ${mod}: ${acts.length ? line(mod, acts) : 'no outcomes'}${mine.length ? telemetry(mine) : ''}${faulted}${blindNote}`)
   }
   if (quiet.length) out.push(`  No events: ${quiet.join(', ')}`)
   out.push('Token figures for notes are estimates (4 characters per token); $ are list prices.')
