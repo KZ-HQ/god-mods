@@ -1,6 +1,6 @@
 {
   "name": "test-on-edit",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt",
   "author": {
     "name": "KeithZhu"

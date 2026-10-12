@@ -8,13 +8,13 @@
       "name": "context-gauge",
       "source": "./context-gauge",
       "description": "Band above the prompt: context fill, last turn's cost, session cost and rate limits; /gauge toggles it",
-      "version": "0.5.1"
+      "version": "0.5.2"
     },
     {
       "name": "danger-guard",
       "source": "./danger-guard",
       "description": "Holds risky shell commands and writes to protected data, previews what they would change, and asks before they run",
-      "version": "0.4.2"
+      "version": "0.4.3"
     },
     {
       "name": "prompt-shaper",
@@ -26,7 +26,7 @@
       "name": "long-turn-notify",
       "source": "./long-turn-notify",
       "description": "macOS notification when a long turn finishes, or when Claude needs your input, in terminal sessions",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     {
       "name": "search-router",
@@ -44,7 +44,7 @@
       "name": "worktree-janitor",
       "source": "./worktree-janitor",
       "description": "Lists agent worktrees with their PR state and removes merged ones on your say-so; /worktrees",
-      "version": "0.4.1"
+      "version": "0.4.2"
     },
     {
       "name": "agent-fleet",
@@ -56,7 +56,7 @@
       "name": "merge-gate",
       "source": "./merge-gate",
       "description": "Holds gh pr merge until CI passes on the PR head; /gate runs the project CI steps locally without a Claude turn",
-      "version": "0.4.4"
+      "version": "0.4.5"
     },
     {
       "name": "secret-scrubber",
@@ -68,7 +68,7 @@
       "name": "switchboard",
       "source": "./switchboard",
       "description": "Picks Haiku, Sonnet or Opus for each subagent from its task; applies picks by default. /route",
-      "version": "0.4.1"
+      "version": "0.4.2"
     },
     {
       "name": "topic-drift",
@@ -80,13 +80,13 @@
       "name": "test-on-edit",
       "source": "./test-on-edit",
       "description": "When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt",
-      "version": "0.4.1"
+      "version": "0.4.2"
     },
     {
       "name": "where-am-i",
       "source": "./where-am-i",
       "description": "Band with the session's goal and what Claude is doing; /goal sets it, /park saves where you left off",
-      "version": "0.3.1"
+      "version": "0.3.2"
     },
     {
       "name": "next-steps",
@@ -98,13 +98,13 @@
       "name": "mod-stats",
       "source": "./mod-stats",
       "description": "/mod-stats [days]: what each mod did, cost and saved",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     {
       "name": "mod-faults",
       "source": "./mod-faults",
       "description": "Passively logs god-mods hook faults (skipped, expired, kept, caught, rejected) to ~/.claude/logs/god-mods-faults.jsonl; /mod-faults shows a summary",
-      "version": "0.4.0"
+      "version": "0.4.1"
     }
   ],
   "description": "Claude Code mods by KeithZhu"

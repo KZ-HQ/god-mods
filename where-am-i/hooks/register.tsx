@@ -8,12 +8,6 @@ const now = atom({ plugin: 'where-am-i', key: 'now' } as const, '')
 const parked = atom({ plugin: 'where-am-i', key: 'parked' } as const, null)
 const isHidden = atom({ plugin: 'where-am-i', key: 'isHidden' } as const, false)
 
-const firstLine = (text: string, max = 90) => {
-  const line = text.split('\n').map(l => l.trim()).find(Boolean) ?? ''
-
-  return line.length > max ? `${line.slice(0, max - 1)}…` : line
-}
-
 const doing = (e: Record<string, unknown>) => {
   const tool = String(e.tool).replace(/^mcp__.+?__/, '')
   const arg = [e.description, e.command, e.file_path, e.pattern, e.query].find((v): v is string => typeof v === 'string' && v.length > 0)
@@ -125,6 +119,15 @@ function count($: EngineInterface, event: string): void {
   if (event === 'turn.complete') flush($)
 }
 // </metrics>
+
+// <text: generated from shared/text.ts by shared/sync.sh>
+// The first non-blank line, trimmed, cut to max characters with an ellipsis
+function firstLine(text: string, max = 90): string {
+  const line = text.split('\n').map(l => l.trim()).find(Boolean) ?? ''
+
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line
+}
+// </text>
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {

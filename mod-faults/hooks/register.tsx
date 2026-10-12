@@ -90,10 +90,6 @@ function count($: EngineInterface, event: string): void {
 // </metrics>
 
 // <modlist: generated from shared/modlist.ts by shared/sync.sh>
-// The god-mods mod list, read from the marketplace's own marketplace.json. Source of truth: ~/.claude/mods/shared/modlist.ts.
-// shared/sync.sh inlines it between the modlist markers in each mod that uses it. Edit here, run sync.sh, never edit an inlined copy.
-// Undefined when the god-mods marketplace is not installed or its manifest is unreadable.
-
 async function godModList($: EngineInterface): Promise<{ names: string[]; file: string } | undefined> {
   try {
     const home = await $.env.get('HOME')

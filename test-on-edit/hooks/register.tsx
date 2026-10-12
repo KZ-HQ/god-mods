@@ -11,12 +11,6 @@ let isOn = true
 const edited = new Set<string>()
 let pending: string | undefined
 
-async function repoRoot($: EngineInterface, cwd: string): Promise<string> {
-  const r = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd, timeoutMs: 5000 }).catch(() => undefined)
-
-  return r && r.exitCode === 0 ? r.stdout.trim() : cwd
-}
-
 async function project($: EngineInterface, root: string) {
   const hasUvLock = await $.fs.exists(`${root}/uv.lock`).catch(() => false)
   let deps: string[] = []
@@ -147,6 +141,15 @@ function count($: EngineInterface, event: string): void {
 }
 // </metrics>
 
+// <git: generated from shared/git.ts by shared/sync.sh>
+// The git top level of cwd (the session's folder when omitted); undefined outside a repository or when git fails
+async function repoRoot($: EngineInterface, cwd?: string): Promise<string | undefined> {
+  const r = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { ...(cwd ? { cwd } : {}), timeoutMs: 5000 }).catch(() => undefined)
+
+  return r && r.exitCode === 0 ? r.stdout.trim() || undefined : undefined
+}
+// </git>
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
@@ -180,7 +183,8 @@ export const register: Register = on => {
     const paths = [...edited]
     edited.clear()
     void (async () => {
-      const root = await repoRoot($, await $.session.cwd())
+      const cwd = await $.session.cwd()
+      const root = (await repoRoot($, cwd)) ?? cwd
       const tests = new Set<string>()
       for (const p of paths) {
         const t = await findTest($, p, root)

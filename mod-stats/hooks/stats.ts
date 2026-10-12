@@ -17,8 +17,14 @@ export function parse(text: string): Row[] {
   return rows
 }
 
+// <money: generated from shared/money.ts by shared/sync.sh>
+// US dollars: three decimals under $1, where cents hide the cost of a cheap call; two from $1
+function usd(n: number): string {
+  return `$${Math.abs(n) < 1 ? n.toFixed(3) : n.toFixed(2)}`
+}
+// </money>
+
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
-const usd = (n: number) => `$${Math.abs(n) < 1 ? n.toFixed(3) : n.toFixed(2)}`
 const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(Math.round(n)))
 const pct = (a: number, b: number) => (b ? `${Math.round((a * 100) / b)}%` : '—')
 

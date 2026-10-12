@@ -18,8 +18,6 @@ async function modeOf($: EngineInterface): Promise<Mode> {
   return m === 'observe' || m === 'off' ? m : 'route'
 }
 
-const usd = (n: number) => `$${n.toFixed(n < 1 ? 3 : 2)}`
-
 // <metrics: generated from shared/metrics.ts by shared/sync.sh>
 // Shared mod metrics (schema v2). Source of truth: ~/.claude/mods/shared/metrics.ts.
 // shared/sync.sh inlines it between the metrics markers in each mod's register.tsx (the engine only lets $
@@ -108,6 +106,13 @@ function count($: EngineInterface, event: string): void {
   if (event === 'turn.complete') flush($)
 }
 // </metrics>
+
+// <money: generated from shared/money.ts by shared/sync.sh>
+// US dollars: three decimals under $1, where cents hide the cost of a cheap call; two from $1
+function usd(n: number): string {
+  return `$${Math.abs(n) < 1 ? n.toFixed(3) : n.toFixed(2)}`
+}
+// </money>
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {

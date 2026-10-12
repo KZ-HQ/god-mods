@@ -16,9 +16,6 @@ const duration = (ms: number) => {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
-const firstLine = (text: string) =>
-  text.split('\n').map(l => l.replace(/[#*`>_]/g, '').trim()).find(Boolean)?.slice(0, 180) ?? 'Done.'
-
 async function notify($: EngineInterface, body: string, title: string, subtitle: string) {
   try {
     await $.process.run(['osascript', ...SCRIPT.flatMap(l => ['-e', l]), body, title, subtitle], { timeoutMs: 5000 })
@@ -116,6 +113,18 @@ function count($: EngineInterface, event: string): void {
 }
 // </metrics>
 
+// <text: generated from shared/text.ts by shared/sync.sh>
+// The first non-blank line, trimmed, cut to max characters with an ellipsis
+function firstLine(text: string, max = 90): string {
+  const line = text.split('\n').map(l => l.trim()).find(Boolean) ?? ''
+
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line
+}
+// </text>
+
+// The reply's first line without markdown marks, for a notification
+const summaryLine = (text: string) => firstLine(text.replace(/[#*`>_]/g, ''), 180) || 'Done.'
+
 export const register: Register = (on, options) => {
   logLoaded(on)
 
@@ -132,7 +141,7 @@ export const register: Register = (on, options) => {
 
     const project = (await $.session.cwd()).split('/').filter(Boolean).pop() ?? 'Claude Code'
     const subtitle = `${isError ? 'Stopped with an error' : 'Finished'} after ${duration(e.durationMs)}`
-    const body = isError ? 'The turn ended with an error. Check the session.' : firstLine(e.answer)
+    const body = isError ? 'The turn ended with an error. Check the session.' : summaryLine(e.answer)
 
     // The desktop app already sends its own "task complete" banner
     const surfaces = await $.session.surfaces()
