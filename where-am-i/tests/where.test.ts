@@ -39,10 +39,10 @@ describe('where-am-i', () => {
   })
 })
 
-describe('/goal', () => {
+describe('/where', () => {
   test('sets, shows and clears the goal; after clear the next prompt sets it', async ($, on) => {
     on('prompt.submit', (_$, e) => ({ text: e.text }))
-    const goal = (args: string) => $.command.run({ command: 'goal', args, ...RUN }).then(r => r.text)
+    const goal = (args: string) => $.command.run({ command: 'where', args, ...RUN }).then(r => r.text)
     expect(await goal('')).toBe('Goal: not set')
     expect(await goal('Ship KEI-200 billing export')).toBe('Goal: Ship KEI-200 billing export')
     await $.prompt.submit({ text: 'look at the csv writer', wait: false, origin: { kind: 'composer' } })
@@ -67,9 +67,31 @@ describe('/goal', () => {
       return found
     }
     expect(await band()).toBe(true)
-    expect((await $.command.run({ command: 'goal', args: 'hide', ...RUN })).text).toBe('where-am-i band hidden.')
+    expect((await $.command.run({ command: 'where', args: 'hide', ...RUN })).text).toBe('where-am-i band hidden.')
     expect(await band()).toBe(false)
-    expect((await $.command.run({ command: 'goal', args: 'show', ...RUN })).text).toBe('where-am-i band shown.')
+    expect((await $.command.run({ command: 'where', args: 'show', ...RUN })).text).toBe('where-am-i band shown.')
     expect(await band()).toBe(true)
+  })
+})
+
+describe('start', () => {
+  test('a refused command name does not stop /park or a parked note from coming back', async ($, on) => {
+    mock.store(on, { 'park:/r': { note: 'stopped before the reset', goal: 'Ship KEI-200', branch: 'main', at: 1_000_000 } })
+    mock.clock(on, { now: 1_000_000 })
+    on('session.cwd', () => ({ value: '/r' }))
+    on('process.run', () => ({ value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+    on('session.start', (_$, e) => ({ cwd: e.cwd }))
+    const registered: string[] = []
+    on('command.register', (_$, e) => {
+      if (e.name === 'where' || e.name === 'goal') throw new Error(`"/${e.name}" refused: it is a built-in`)
+      registered.push(e.name)
+
+      return { value: { command: e.name } }
+    })
+    on('ui.render', { component: 'AbovePrompt' }, ($, e) => h($.ui.resolve(e).Box, {}) as never)
+    await $.session.start({ cwd: '/r' } as never)
+    expect(registered).toEqual(['park'])
+    const ui = await $.ui.mount({ plugin: 'where-am-i', surface: 'terminal', ...BAND(false) })
+    expect(await ui.find({ type: 'Text', text: /stopped before the reset/ })).toBeDefined()
   })
 })
