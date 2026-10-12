@@ -3,6 +3,11 @@ import type { EngineInterface, On, Register } from 'claude-code'
 
 import type { Parked } from '../types'
 
+const COMMANDS = [
+  { name: 'where', description: "Set this session's goal shown above the prompt; /where clear, /where hide, /where show" },
+  { name: 'park', description: 'Save where you left off in this folder: /park [note]; shown when you come back. /park clear' },
+]
+
 const goal = atom({ plugin: 'where-am-i', key: 'goal' } as const, '')
 const now = atom({ plugin: 'where-am-i', key: 'now' } as const, '')
 const parked = atom({ plugin: 'where-am-i', key: 'parked' } as const, null)
@@ -132,8 +137,8 @@ function firstLine(text: string, max = 90): string {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
-    await $.command.register({ name: 'goal', description: "Set this session's goal shown above the prompt; /goal clear, /goal hide" })
-    await $.command.register({ name: 'park', description: 'Save where you left off in this folder: /park [note]; shown when you come back. /park clear' })
+    // One by one: a name the engine refuses (a built-in took it, as with /goal) must not cost the rest of start
+    for (const command of COMMANDS) await $.command.register(command).catch(() => track($, 'where-am-i', 'refused', { command: command.name }))
     const saved = (await $.store.get(await parkKey($)).catch(() => undefined)) as Parked | undefined
     if (saved?.note || saved?.goal) {
       await update($, parked, () => saved)
@@ -144,8 +149,8 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'goal' }, async ($, e) => {
-    count($, 'command.run{goal}')
+  on('command.run', { command: 'where' }, async ($, e) => {
+    count($, 'command.run{where}')
     const arg = e.args.trim()
     if (arg === 'hide' || arg === 'show') {
       await update($, isHidden, () => arg === 'hide')

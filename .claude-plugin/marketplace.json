@@ -86,7 +86,7 @@
       "name": "where-am-i",
       "source": "./where-am-i",
       "description": "Band with the session's goal and what Claude is doing; /goal sets it, /park saves where you left off",
-      "version": "0.3.2"
+      "version": "0.4.0"
     },
     {
       "name": "next-steps",
