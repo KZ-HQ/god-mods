@@ -95,3 +95,31 @@ describe('fleet', () => {
     expect(await ui.find({ type: 'Text', text: /Bash: ls/ })).toBeDefined()
   })
 })
+
+describe('/fleet', () => {
+  const SPAWN = (id: string) => ({ tool_use_id: id, prompt: 'p', description: `task ${id}`, subagentType: 'general-purpose', provider: { plugin: 'engine', tier: 'core' }, parentModel: 'm' }) as never
+
+  test('opens the pane and counts running agents; clear drops finished ones', async ($, on) => {
+    let id = 0
+    const opened: string[] = []
+    on('agent.spawn', () => ({ model: 'm', agentId: `a${++id}` }))
+    on('ui.open', (_$, e) => {
+      opened.push(e.id)
+
+      return { value: { isPlaced: true } }
+    })
+    on('ui.status', () => ({ value: undefined }))
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+    await $.agent.spawn(SPAWN('1'))
+    await $.agent.spawn(SPAWN('2'))
+    await $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId: 't', reason: 'answer', agentId: 'a1' })
+
+    opened.length = 0
+    const shown = await $.command.run({ command: 'fleet', args: '' })
+    expect(shown.text).toBe('1 running, 2 this session.')
+    expect(opened).toEqual(['fleet'])
+
+    expect((await $.command.run({ command: 'fleet', args: 'clear' })).text).toBe('Cleared finished agents.')
+    expect((await $.command.run({ command: 'fleet', args: '' })).text).toBe('1 running, 1 this session.')
+  })
+})

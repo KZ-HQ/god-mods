@@ -124,3 +124,44 @@ describe('tool.call', () => {
     expect(didRun).toBe(true)
   })
 })
+
+describe('/guard', () => {
+  test('off lets a risky command run without asking; on asks again', async ($, on) => {
+    let ran = 0
+    let asked = 0
+    on('tool.call', { tool: 'Bash' }, () => {
+      ran += 1
+
+      return { result: { stdout: '', stderr: '', interrupted: false } }
+    })
+    on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
+      asked += 1
+
+      return { result: { questions: e.questions, answers: { [e.questions[0]!.question]: 'Cancel' } } }
+    })
+    expect((await $.command.run({ command: 'guard', args: 'off' })).text).toBe('danger-guard is OFF for this session.')
+    await $.tool.call({ tool: 'Bash', command: 'git branch -D gone' })
+    expect([ran, asked]).toEqual([1, 0])
+
+    expect((await $.command.run({ command: 'guard', args: 'on' })).text).toBe('danger-guard is on.')
+    await $.tool.call({ tool: 'Bash', command: 'git branch -D gone' })
+    expect([ran, asked]).toEqual([1, 1])
+    expect((await $.command.run({ command: 'guard', args: '' })).text).toBe('danger-guard is on.')
+  })
+
+  test('asks before an Edit to a protected path, and denies when declined', async ($, on) => {
+    let wrote = false
+    on('fs.exists', () => ({ value: true }))
+    on('tool.call', { tool: 'Edit' }, () => {
+      wrote = true
+
+      return { result: 'ok' }
+    })
+    on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => ({
+      result: { questions: e.questions, answers: { [e.questions[0]!.question]: 'Cancel' } },
+    }))
+    const r = await $.tool.call({ tool: 'Edit', file_path: '/app/data/app.sqlite', old_string: 'a', new_string: 'b' } as never)
+    expect(wrote).toBe(false)
+    expect(r.deny).toMatch(/protected path \/app\/data\/app\.sqlite/)
+  })
+})

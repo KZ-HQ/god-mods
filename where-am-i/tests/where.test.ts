@@ -38,3 +38,38 @@ describe('where-am-i', () => {
     expect(await ui.find({ type: 'Text', text: /Parked just now on main: stopped before the production reset/ })).toBeDefined()
   })
 })
+
+describe('/goal', () => {
+  test('sets, shows and clears the goal; after clear the next prompt sets it', async ($, on) => {
+    on('prompt.submit', (_$, e) => ({ text: e.text }))
+    const goal = (args: string) => $.command.run({ command: 'goal', args, ...RUN }).then(r => r.text)
+    expect(await goal('')).toBe('Goal: not set')
+    expect(await goal('Ship KEI-200 billing export')).toBe('Goal: Ship KEI-200 billing export')
+    await $.prompt.submit({ text: 'look at the csv writer', wait: false, origin: { kind: 'composer' } })
+    expect(await goal('')).toBe('Goal: Ship KEI-200 billing export')
+
+    expect(await goal('clear')).toBe('Goal cleared; your next prompt sets it.')
+    await $.prompt.submit({ text: '/compact', wait: false, origin: { kind: 'composer' } })
+    expect(await goal('')).toBe('Goal: not set')
+    await $.prompt.submit({ text: 'fix the restore path', wait: false, origin: { kind: 'composer' } })
+    expect(await goal('')).toBe('Goal: fix the restore path')
+  })
+
+  test('hide removes the band; show brings it back', async ($, on) => {
+    on('prompt.submit', (_$, e) => ({ text: e.text }))
+    on('ui.render', { component: 'AbovePrompt' }, ($, e) => h($.ui.resolve(e).Box, {}) as never)
+    await $.prompt.submit({ text: 'Finish KEI-189 backup tooling', wait: false, origin: { kind: 'composer' } })
+    const band = async () => {
+      const ui = await $.ui.mount({ plugin: 'where-am-i', surface: 'terminal', ...BAND(false) })
+      const found = (await ui.find({ type: 'Text', text: /Finish KEI-189/ })) !== undefined
+      await ui.unmount()
+
+      return found
+    }
+    expect(await band()).toBe(true)
+    expect((await $.command.run({ command: 'goal', args: 'hide', ...RUN })).text).toBe('where-am-i band hidden.')
+    expect(await band()).toBe(false)
+    expect((await $.command.run({ command: 'goal', args: 'show', ...RUN })).text).toBe('where-am-i band shown.')
+    expect(await band()).toBe(true)
+  })
+})

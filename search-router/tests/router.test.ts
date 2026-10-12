@@ -94,3 +94,23 @@ describe('search-router', () => {
     expect(rows.find(r => r.event === 'turn')).toMatchObject({ v: 2, mod: 'search-router', hooks: { 'session.start': 1, 'tool.call': 1 } })
   })
 })
+
+describe('/search-router', () => {
+  test('shows both levels and the policy; reset clears an outage', async ($, on) => {
+    mock.clock(on)
+    mock.store(on)
+    const error = 'Insufficient credits to perform this request (402)'
+    on('tool.call', { tool: FC }, () => ({ isError: true as const, result: error, text: error }))
+    on('tool.describe', (_$, e) => ({ description: e.description }))
+
+    const fresh = (await $.command.run({ command: 'search-router', args: '' })).text
+    expect(fresh).toMatch(/^Firecrawl: ok\nExa: ok\nPolicy: /)
+
+    await $.tool.call({ tool: FC, query: 'x' } as never)
+    expect((await $.command.run({ command: 'search-router', args: '' })).text).toMatch(/Firecrawl: out/)
+
+    expect((await $.command.run({ command: 'search-router', args: 'reset' })).text).toMatch(/^Firecrawl: ok\nExa: ok/)
+    const after = await $.tool.call({ tool: FC, query: 'x' } as never)
+    expect(after.deny).toBeUndefined()
+  })
+})

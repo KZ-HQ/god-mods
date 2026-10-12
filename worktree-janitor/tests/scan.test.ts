@@ -38,12 +38,13 @@ describe('scan', () => {
 
 
 // A worktree whose PR was squash-merged and whose remote branch is gone: none of its commits are on a remote
-function repo(on: On, prHead: string) {
+function repo(on: On, prHead: string, ran: string[] = []) {
   const SHA = 'f5253b1aaaabbbbccccddddeeeeffff000011112'
   on('agent.list', () => ({ value: [] }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('process.run', (_$, e) => {
     const a = e.argv.join(' ')
+    ran.push(a)
     const out = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
     if (a.startsWith('/bin/zsh')) return out('/opt/homebrew/bin/gh\n')
     if (a === 'git rev-parse --show-toplevel') return out('/r\n')
@@ -52,6 +53,7 @@ function repo(on: On, prHead: string) {
     if (a.includes('pr list')) return out(JSON.stringify([{ state: 'MERGED', number: 32, headRefOid: prHead }]))
     if (a.startsWith('git merge-base --is-ancestor')) return out('', 1)
     if (a.startsWith('git rev-list --count')) return out('3\n')
+    if (a.startsWith('git branch --list')) return out('feat-42\n')
 
     return out('')
   })
@@ -73,5 +75,17 @@ describe('squash merges', () => {
     repo(on, '9999999999999999999999999999999999999999')
     const r = await $.command.run(RUN)
     expect(r.text).toMatch(/commits not on the remote/)
+  })
+})
+
+describe('/worktrees clean', () => {
+  test('removes the merged worktree and its branch, then prunes', async ($, on) => {
+    const ran: string[] = []
+    repo(on, 'f5253b1aaaabbbbccccddddeeeeffff000011112', ran)
+    const r = await $.command.run({ ...RUN, args: 'clean' })
+    expect(r.text).toMatch(/Worktree cleanup:\n✔ agent-a119abc207ca9908a \(branches: feat-42\)/)
+    expect(ran).toContain('git worktree remove /r/.claude/worktrees/agent-a119abc207ca9908a')
+    expect(ran).toContain('git branch -D feat-42')
+    expect(ran).toContain('git worktree prune')
   })
 })

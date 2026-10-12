@@ -61,3 +61,24 @@ describe('long-turn-notify', () => {
     expect(ran).toHaveLength(0)
   })
 })
+
+describe('metrics', () => {
+  test('a failing metrics write toasts once, however many rows fail', async ($, on) => {
+    const toasts: string[] = []
+    on('clock.now', () => ({ value: 0 }))
+    on('session.id', () => ({ value: 's1' }))
+    on('session.cwd', () => ({ value: '/r' }))
+    on('session.start', (_$, e) => ({ cwd: e.cwd }))
+    on('fs.read', () => ({ value: '{"version":"1.0.0"}' }))
+    on('ui.toast', (_$, e) => {
+      toasts.push(e.text)
+
+      return { value: undefined }
+    })
+    on('process.run', () => ({ value: { exitCode: 1, stdout: '', stderr: 'disk full', isStdoutTruncated: false, isStderrTruncated: false } }))
+    for (let i = 0; i < 3; i++) await $.session.start({ cwd: '/r' } as never)
+    for (let i = 0; i < 50; i++) await Promise.resolve()
+    const failures = toasts.filter(t => /metrics write failed/.test(t))
+    expect(failures).toEqual(['long-turn-notify: metrics write failed (disk full)'])
+  })
+})

@@ -29,3 +29,49 @@ describe('prompt-shaper', () => {
     expect(seen).toBeUndefined()
   })
 })
+
+describe('/shorthand', () => {
+  test('add, list and remove terms; a removed term stops expanding', async ($, on) => {
+    mock.store(on)
+    let seen: readonly string[] | undefined
+    on('prompt.submit', (_$, e) => {
+      seen = e.context
+
+      return { text: e.text }
+    })
+    const run = (args: string) => $.command.run({ command: 'shorthand', args }).then(r => r.text)
+    expect(await run('')).toMatch(/^No shorthand yet/)
+    expect(await run('add kz = the KZ-HQ org')).toBe('Shorthand saved: kz = the KZ-HQ org')
+    expect(await run('')).toBe('Shorthand:\n  kz = the KZ-HQ org')
+    await $.prompt.submit({ text: 'list kz repos', wait: false, origin: { kind: 'composer' } })
+    expect(seen?.join('\n')).toMatch(/"kz" = the KZ-HQ org/)
+
+    expect(await run('rm kz')).toBe('Shorthand removed: kz')
+    await $.prompt.submit({ text: 'list kz repos', wait: false, origin: { kind: 'composer' } })
+    expect(seen?.join('\n') ?? '').not.toMatch(/KZ-HQ/)
+  })
+})
+
+describe('git state', () => {
+  test('attaches git state only when it changed since the last prompt', async ($, on) => {
+    mock.store(on)
+    let status = '## main\n M src/a.ts\n'
+    on('process.run', (_$, e) => ({
+      value: { exitCode: 0, stdout: e.argv[0] === 'git' ? status : '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+    }))
+    const contexts: (string | undefined)[] = []
+    on('prompt.submit', (_$, e) => {
+      contexts.push(e.context?.join('\n'))
+
+      return { text: e.text }
+    })
+    const send = () => $.prompt.submit({ text: 'go on', wait: false, origin: { kind: 'composer' } })
+    await send()
+    await send()
+    status = '## main\n'
+    await send()
+    expect(contexts[0]).toBe('Git now: main; 1 changed: M src/a.ts.')
+    expect(contexts[1]).toBeUndefined()
+    expect(contexts[2]).toBe('Git now: main; working tree clean.')
+  })
+})
