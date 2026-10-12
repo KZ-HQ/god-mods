@@ -14,7 +14,7 @@
       "name": "danger-guard",
       "source": "./danger-guard",
       "description": "Holds risky shell commands and writes to protected data, previews what they would change, and asks before they run",
-      "version": "0.4.3"
+      "version": "0.4.4"
     },
     {
       "name": "prompt-shaper",
