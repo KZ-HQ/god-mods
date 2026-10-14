@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { assess, segments } from '../hooks/analyze.ts'
+import { assess, redact, segments } from '../hooks/analyze.ts'
 
 const reasons = (cmd: string) => assess(cmd).map(r => r.reason)
 
@@ -163,5 +163,100 @@ describe('/guard', () => {
     const r = await $.tool.call({ tool: 'Edit', file_path: '/app/data/app.sqlite', old_string: 'a', new_string: 'b' } as never)
     expect(wrote).toBe(false)
     expect(r.deny).toMatch(/protected path \/app\/data\/app\.sqlite/)
+  })
+})
+
+const USAGE = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+
+// Stubs Bash (never really runs) and AskUserQuestion (answers Cancel), recording the question.
+function holdAndRecord(on: Parameters<Parameters<typeof test>[1]>[1]) {
+  const seen = { question: '', ran: false }
+  on('tool.call', { tool: 'Bash' }, () => {
+    seen.ran = true
+
+    return { result: { stdout: '', stderr: '', interrupted: false } }
+  })
+  on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
+    seen.question = e.questions[0]!.question
+
+    return { result: { questions: e.questions, answers: { [e.questions[0]!.question]: 'Cancel' } } }
+  })
+
+  return seen
+}
+
+describe('redact', () => {
+  test('masks secrets on a command line', async () => {
+    for (const [cmd, secret] of [
+      ['curl -H "Authorization: Bearer abcdef1234567890xyz" https://x', 'abcdef1234567890xyz'],
+      ['CLOUDFLARE_API_TOKEN=s3cr3tvalue wrangler deploy', 's3cr3tvalue'],
+      ['mysql -u root -phunter22 db', 'hunter22'],
+      ['psql postgres://admin:pa55word@db/x', 'pa55word'],
+      ['tool --password=letmein', 'letmein'],
+      ['tool --api-key k-123456', 'k-123456'],
+      ['echo sk-ant-api03-AAAAAAAAAAAAAAAAAAAA', 'sk-ant-api03-AAAAAAAAAAAAAAAAAAAA'],
+      ['git push https://ghp_abcdefghijklmnopqrstuvwxyz0123456789@github.com/x', 'ghp_abcdefghij'],
+      ['export AWS=AKIAABCDEFGHIJKLMNOP', 'AKIAABCDEFGHIJKLMNOP'],
+    ] as const) {
+      expect(redact(cmd).includes(secret)).toBe(false)
+    }
+  })
+
+  test('leaves ordinary commands readable', async () => {
+    for (const cmd of ['rm -rf build/tmp', 'git reset --hard HEAD~1', 'find . -print -delete', 'wrangler d1 execute DB --remote --command "DELETE FROM tenants"']) {
+      expect(redact(cmd)).toBe(cmd)
+    }
+  })
+})
+
+describe('summary', () => {
+  test('shows the Haiku summary first and the raw command as a last line', async ($, on) => {
+    let prompt = ''
+    on('model.complete', (_$, e) => {
+      prompt = e.prompt
+
+      return { value: { isAnswered: true, text: 'Does: deletes src.\nRisk: files are gone; not undoable.', usage: USAGE } }
+    })
+    const seen = holdAndRecord(on)
+    await $.tool.call({ tool: 'Bash', command: 'rm -rf /tmp/does-not-exist-guard-test' })
+    expect(seen.ran).toBe(false)
+    expect(seen.question).toMatch(/^Risky: recursive delete/)
+    expect(seen.question).toMatch(/Summary \(Haiku, advisory\):\nDoes: deletes src\.\nRisk: files are gone/)
+    expect(seen.question).toMatch(/Command: rm -rf \/tmp\/does-not-exist-guard-test\n\nRun it\?$/)
+    expect(prompt).toMatch(/rm -rf/)
+  })
+
+  test('never sends a secret to the model', async ($, on) => {
+    let prompt = ''
+    on('model.complete', (_$, e) => {
+      prompt = e.prompt
+
+      return { value: { isAnswered: true, text: 'Does: x\nRisk: y', usage: USAGE } }
+    })
+    holdAndRecord(on)
+    await $.tool.call({ tool: 'Bash', command: 'API_TOKEN=supersecretvalue123 rm -rf /tmp/does-not-exist-guard-test' })
+    expect(prompt).toMatch(/rm -rf/)
+    expect(prompt.includes('supersecretvalue123')).toBe(false)
+  })
+
+  test('an unanswered summary falls back to the raw command and still asks', async ($, on) => {
+    on('model.complete', () => ({ value: { isAnswered: false, reason: 'aborted', usage: USAGE } }))
+    const seen = holdAndRecord(on)
+    const r = await $.tool.call({ tool: 'Bash', command: 'git branch -D gone' })
+    expect(seen.ran).toBe(false)
+    expect(r.deny).toMatch(/did not approve/)
+    expect(seen.question).toMatch(/^Risky: force-deletes branch gone\n\n\$ git branch -D gone/)
+    expect(seen.question.includes('Summary')).toBe(false)
+  })
+
+  test('a summary call that throws still asks, never fails open', async ($, on) => {
+    on('model.complete', () => {
+      throw new Error('model blocked')
+    })
+    const seen = holdAndRecord(on)
+    const r = await $.tool.call({ tool: 'Bash', command: 'git branch -D gone' })
+    expect(seen.ran).toBe(false)
+    expect(seen.question).toMatch(/\$ git branch -D gone/)
+    expect(r.deny).toMatch(/did not approve/)
   })
 })

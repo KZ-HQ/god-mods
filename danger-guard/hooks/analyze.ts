@@ -214,3 +214,39 @@ export function assess(command: string, cwd?: string): Risk[] {
 
   return risks.filter(r => !seen.has(r.reason) && seen.add(r.reason))
 }
+
+// Masks secrets in a command before it leaves the machine for a summary.
+// Copied shapes from secret-scrubber (mods install from separate folders, so no cross-mod import),
+// plus the forms secrets take on a command line. Errs toward masking.
+const SECRET_SHAPES: readonly RegExp[] = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
+  /\bsk-ant-[A-Za-z0-9_-]{10,}/g,
+  /\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}/g,
+  /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g,
+  /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g,
+  /\bxox[abprs]-[A-Za-z0-9-]{10,}/g,
+  /\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}/g,
+  /\bAIza[0-9A-Za-z_-]{35}\b/g,
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
+]
+const MASK = '[REDACTED]'
+
+export function redact(command: string): string {
+  let out = command
+  for (const re of SECRET_SHAPES) out = out.replace(re, MASK)
+
+  return out
+    // NAME=value / NAME: value where the name says secret
+    .replace(/\b([A-Za-z_][\w-]*(?:token|key|secret|passw(?:or)?d|pwd|auth|credential|cookie|session)[\w-]*)(\s*[:=]\s*)("[^"]*"|'[^']*'|\S+)/gi, `$1$2${MASK}`)
+    // --password=x, --token x, --api-key x
+    .replace(/(--?[\w-]*(?:token|key|secret|passw(?:or)?d|pwd|auth|credential)[\w-]*)(=|\s+)("[^"]*"|'[^']*'|[^\s-]\S*)/gi, `$1$2${MASK}`)
+    // Authorization: Bearer x / Basic x
+    .replace(/\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{8,}/g, `$1 ${MASK}`)
+    // user:pass@ in URLs
+    .replace(/(\/\/[^/\s:@]+:)[^@\s/]+@/g, `$1${MASK}@`)
+    // mysql -pSECRET
+    .replace(/(\bmysql(?:dump|admin)?\b[^|;&]*?\s-p)(?!\s)\S+/g, `$1${MASK}`)
+    // long random-looking runs: hex or base64
+    .replace(/\b[A-Fa-f0-9]{32,}\b/g, MASK)
+    .replace(/[A-Za-z0-9+/_-]{40,}={0,2}/g, m => (/[a-z]/.test(m) && /[A-Z0-9]/.test(m) ? MASK : m))
+}
