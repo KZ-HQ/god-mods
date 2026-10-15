@@ -34,12 +34,6 @@ function line(mod: string, rows: Row[]): string {
   const sum = (event: string, key: string) => of(event).reduce((a, r) => a + num(r[key]), 0)
 
   switch (mod) {
-    case 'switchboard': {
-      const a = of('agent')
-      const routed = a.filter(r => r.applied === true).length
-
-      return `${a.length} agents, ${routed} rerouted · spent ${usd(sum('agent', 'usd'))} · saved ${usd(sum('agent', 'savedUsd'))} vs the models asked for`
-    }
     case 'next-steps': {
       const shown = where('shown', 'ok', true)
 

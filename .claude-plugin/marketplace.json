@@ -65,12 +65,6 @@
       "version": "0.3.0"
     },
     {
-      "name": "switchboard",
-      "source": "./switchboard",
-      "description": "Picks Haiku, Sonnet or Opus for each subagent from its task; applies picks by default. /route",
-      "version": "0.4.2"
-    },
-    {
       "name": "topic-drift",
       "source": "./topic-drift",
       "description": "Band above the prompt that suggests a fresh session when a prompt drifts off the session's topic",
@@ -92,7 +86,7 @@
       "name": "mod-stats",
       "source": "./mod-stats",
       "description": "/mod-stats [days]: what each mod did, cost and saved",
-      "version": "0.5.2"
+      "version": "0.5.3"
     },
     {
       "name": "mod-faults",
