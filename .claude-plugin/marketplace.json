@@ -63,6 +63,12 @@
       "source": "./mod-faults",
       "description": "Passively logs god-mods hook faults (skipped, expired, kept, caught, rejected) to ~/.claude/logs/god-mods-faults.jsonl; /mod-faults shows a summary",
       "version": "0.5.0"
+    },
+    {
+      "name": "agent-spend",
+      "source": "./agent-spend",
+      "description": "/spend [days] [here]: subagent spend by model and agent type, and the costliest agents, in a pane",
+      "version": "0.1.0"
     }
   ],
   "description": "Claude Code mods by KeithZhu"
