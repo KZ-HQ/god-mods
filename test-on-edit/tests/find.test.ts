@@ -25,7 +25,8 @@ describe('find', () => {
   })
 })
 
-function engine(on: On, exitCode: number) {
+// files: extra paths that exist, with their contents
+function engine(on: On, exitCode: number, files: Record<string, string> = {}) {
   const ran: string[] = []
   const toasts: string[] = []
   const out = (stdout: string, code = 0) => ({ value: { exitCode: code, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
@@ -37,8 +38,8 @@ function engine(on: On, exitCode: number) {
     return { value: undefined }
   })
   on('clock.now', () => ({ value: 0 }))
-  on('fs.exists', (_$, e) => ({ value: e.path === '/r/test/scoped.test.mjs' }))
-  on('fs.read', () => ({ value: '{"devDependencies":{}}' }))
+  on('fs.exists', (_$, e) => ({ value: e.path === '/r/test/scoped.test.mjs' || e.path in files }))
+  on('fs.read', (_$, e) => ({ value: files[e.path] ?? '{"devDependencies":{}}' }))
   on('process.run', (_$, e) => {
     if (e.argv[3] === 'mod-metrics') return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     if (e.argv[0] === 'git') return out('/r\n')
@@ -91,6 +92,32 @@ describe('hook', () => {
     expect(t.toasts).toEqual(['test-on-edit: 1 test file pass'])
     await $.prompt.submit({ text: 'next', wait: false, origin: { kind: 'composer' } })
     expect(t.context()).toBeUndefined()
+  })
+})
+
+describe('mod tests', () => {
+  const edit = (file_path: string) => ({ ...EDIT, file_path })
+  const runs = async ($: Parameters<Parameters<typeof test>[1]>[0], t: ReturnType<typeof engine>, path: string) => {
+    await $.tool.call(edit(path))
+    await $.turn.complete(END)
+    await settle($ as never, () => t.toasts.length > 0)
+
+    return t.ran.map(r => r.split(' -lc ')[1])
+  }
+
+  test('a test under a folder with .claude-plugin/plugin.json runs claude plugin test on that folder', async ($, on) => {
+    const t = engine(on, 0, { '/r/mods/spend/tests/spend.test.ts': 'import x from "y"', '/r/mods/spend/.claude-plugin/plugin.json': '{}' })
+    expect(await runs($, t, '/r/mods/spend/tests/spend.test.ts')).toEqual(["claude plugin test 'mods/spend'"])
+  })
+
+  test('without a manifest, importing claude-code/testing runs claude plugin test on the test folder', async ($, on) => {
+    const t = engine(on, 0, { '/r/spend/spend.test.ts': "import { test } from 'claude-code/testing'" })
+    expect(await runs($, t, '/r/spend/spend.test.ts')).toEqual(["claude plugin test 'spend'"])
+  })
+
+  test('a plain test still runs with node --test', async ($, on) => {
+    const t = engine(on, 0, { '/r/src/a.test.ts': 'import x from "y"' })
+    expect(await runs($, t, '/r/src/a.test.ts')).toEqual(["node --test 'src/a.test.ts'"])
   })
 })
 
