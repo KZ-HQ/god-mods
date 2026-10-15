@@ -55,18 +55,8 @@ function line(mod: string, rows: Row[]): string {
       return `${of('verdict').length} merges checked: ${['pass', 'fail', 'pending', 'none'].map(v => `${where('verdict', 'kind', v)} ${v}`).join(', ')} · asked ${of('asked').length}, held ${where('asked', 'answer', 'hold')}`
     case 'secret-scrubber':
       return `${of('masked').length} outputs masked, ${of('blocked').length} writes blocked`
-    case 'limit-guard':
-      return `${of('hit').length} limit hits · ${of('asked').length} agent starts asked about, held ${where('asked', 'answer', 'hold')} · ${of('resume').length} resumes`
-    case 'search-router':
-      return `${of('rerouted').length} calls rerouted · ${of('level').length} credit changes`
-    case 'topic-drift':
-      return `${of('shown').length} new-topic warnings · ${of('copied').length} copied to a new session, ${of('dismissed').length} dismissed`
     case 'long-turn-notify':
       return `${of('notified').length} notifications (${where('notified', 'isError', true)} for errors)`
-    case 'agent-fleet':
-      return `${of('stopped').length} agents stopped from the pane`
-    case 'worktree-janitor':
-      return `${of('found').length} scans found merged worktrees · ${sum('cleaned', 'removed')} removed`
     case 'mod-faults':
       return `${of('fault').length} hook faults recorded across mods`
     default: {

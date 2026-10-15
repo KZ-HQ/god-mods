@@ -29,30 +29,6 @@
       "version": "0.4.1"
     },
     {
-      "name": "search-router",
-      "source": "./search-router",
-      "description": "Steers web search to Exa and scraping to Firecrawl, and fails over when either runs out of credits; /search-router shows status",
-      "version": "0.4.1"
-    },
-    {
-      "name": "limit-guard",
-      "source": "./limit-guard",
-      "description": "Asks before starting agents when the 5h/weekly usage window is nearly spent, records what a usage-limit cut-off stopped, and /limit-guard:resume continues it",
-      "version": "0.4.1"
-    },
-    {
-      "name": "worktree-janitor",
-      "source": "./worktree-janitor",
-      "description": "Lists agent worktrees with their PR state and removes merged ones on your say-so; /worktrees",
-      "version": "0.4.2"
-    },
-    {
-      "name": "agent-fleet",
-      "source": "./agent-fleet",
-      "description": "Pane of running background agents: task, model, elapsed time, tokens, current tool, with a Stop button; /fleet",
-      "version": "0.5.1"
-    },
-    {
       "name": "merge-gate",
       "source": "./merge-gate",
       "description": "Holds gh pr merge until CI passes on the PR head; /gate runs the project CI steps locally without a Claude turn",
@@ -62,12 +38,6 @@
       "name": "secret-scrubber",
       "source": "./secret-scrubber",
       "description": "Masks API keys and tokens in tool output before Claude or the transcript sees them, and refuses writing them into source files",
-      "version": "0.3.0"
-    },
-    {
-      "name": "topic-drift",
-      "source": "./topic-drift",
-      "description": "Band above the prompt that suggests a fresh session when a prompt drifts off the session's topic",
       "version": "0.3.0"
     },
     {
@@ -86,7 +56,7 @@
       "name": "mod-stats",
       "source": "./mod-stats",
       "description": "/mod-stats [days]: what each mod did, cost and saved",
-      "version": "0.5.3"
+      "version": "0.5.4"
     },
     {
       "name": "mod-faults",

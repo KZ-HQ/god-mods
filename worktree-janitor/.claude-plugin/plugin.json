@@ -1,9 +1,0 @@
-{
-  "name": "worktree-janitor",
-  "version": "0.4.2",
-  "description": "Lists agent worktrees with their PR state and removes merged ones on your say-so; /worktrees",
-  "author": {
-    "name": "KeithZhu"
-  },
-  "types": "./types/index.d.ts"
-}

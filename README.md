@@ -17,21 +17,16 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 
 | Mod | What it does |
 | --- | --- |
-| agent-fleet | Pane of running background agents: task, elapsed time, tokens, current tool, with a Stop button; `/fleet` |
 | context-gauge | Band above the prompt: context fill, last turn's cost, session cost and rate limits; `/gauge` toggles it |
 | danger-guard | Holds risky shell commands and writes to protected data, previews what they would change, and asks before they run |
-| limit-guard | Asks before starting agents when the 5h/weekly usage window is nearly spent, records what a usage-limit cut-off stopped; `/limit-guard:resume` continues it |
 | long-turn-notify | macOS notification when a long turn finishes or Claude needs your input, in terminal sessions |
 | merge-gate | Holds `gh pr merge` until CI passes on the PR head; `/gate` runs the project's CI steps locally |
 | mod-stats | `/mod-stats [days]`: what each mod did, cost and saved, and how often it faulted |
 | mod-faults | Passive: records any god-mod hook that fails, times out or is refused, and toasts at a mod's third fault in a session; `/mod-faults`. It sees only mods beneath it: put `mod-faults@god-mods` first in `enabledPlugins` (that order is the chain order) |
 | next-steps | Suggests 2–3 likely next prompts after each turn; press 1/2/3 to draft one; `/next off` |
 | prompt-shaper | Expands your shorthand and attaches git state to each prompt; adds a project-toolchain note to the system prompt |
-| search-router | Steers web search to Exa and scraping to Firecrawl, and fails over when either runs out of credits; `/search-router` |
 | secret-scrubber | Masks API keys and tokens in tool output, and refuses to write them into source files |
 | test-on-edit | When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt |
-| topic-drift | Band that suggests a fresh session when a prompt drifts off the session's topic |
-| worktree-janitor | Lists agent worktrees with their PR state and removes merged ones on your say-so; `/worktrees` |
 
 ## Plugin order
 
@@ -40,7 +35,7 @@ Installed mods nest in the order of `enabledPlugins` in `~/.claude/settings.json
 ```json
 "enabledPlugins": {
   "mod-faults@god-mods": true,
-  "agent-fleet@god-mods": true,
+  "danger-guard@god-mods": true,
   ...
 }
 ```

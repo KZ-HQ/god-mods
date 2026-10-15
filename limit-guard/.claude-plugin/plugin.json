@@ -1,8 +1,0 @@
-{
-  "name": "limit-guard",
-  "version": "0.4.1",
-  "description": "Asks before starting agents when the 5h/weekly usage window is nearly spent, records what a usage-limit cut-off stopped, and /limit-guard:resume continues it",
-  "author": {
-    "name": "KeithZhu"
-  }
-}
