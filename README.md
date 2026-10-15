@@ -17,6 +17,7 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 
 | Mod | What it does |
 | --- | --- |
+| agent-spend | `/spend [days] [here]`: pane of subagent spend by model and agent type, with the costliest agents, from subagent transcripts |
 | context-gauge | Band above the prompt: context fill, last turn's cost, session cost and rate limits; `/gauge` toggles it |
 | danger-guard | Holds risky shell commands and writes to protected data, previews what they would change, and asks before they run |
 | long-turn-notify | macOS notification when a long turn finishes or Claude needs your input, in terminal sessions |
