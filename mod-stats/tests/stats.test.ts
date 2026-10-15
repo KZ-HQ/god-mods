@@ -7,10 +7,8 @@ const NOW = Date.parse('2026-10-10T12:00:00Z')
 const L = (o: object) => JSON.stringify({ t: '2026-10-10T10:00:00Z', project: 'my-app', ...o })
 
 describe('stats', () => {
-  test('summarizes cost, savings and answers per mod', async () => {
+  test('summarizes cost and answers per mod', async () => {
     const text = [
-      L({ mod: 'switchboard', event: 'agent', applied: true, usd: 1, savedUsd: 1 }),
-      L({ mod: 'switchboard', event: 'agent', applied: false, usd: 2, savedUsd: 0 }),
       L({ mod: 'next-steps', event: 'shown', ok: true, usd: 0.0001 }),
       L({ mod: 'next-steps', event: 'shown', ok: true, usd: 0.0001 }),
       L({ mod: 'next-steps', event: 'clicked', n: 1 }),
@@ -19,13 +17,12 @@ describe('stats', () => {
       '{torn',
       JSON.stringify({ t: '2026-09-01T00:00:00Z', mod: 'danger-guard', event: 'asked', answer: 'run' }),
     ].join('\n')
-    const out = report(parse(text), NOW - 7 * 86_400_000, 7, undefined, ['merge-gate', 'switchboard'])
-    expect(out).toMatch(/switchboard: 2 agents, 1 rerouted · spent \$3\.00 · saved \$1\.00/)
+    const out = report(parse(text), NOW - 7 * 86_400_000, 7, undefined, ['merge-gate', 'search-router'])
     expect(out).toMatch(/next-steps: 2 suggestion sets, 1 clicked \(50%\)/)
     expect(out).toMatch(/danger-guard: 1 risky commands asked about, you cancelled 1/)
     expect(out).toMatch(/compact: 1 done \(460k tokens freed\)/)
     expect(out).toMatch(/No events: .*merge-gate/)
-    expect(out).toMatch(/\(7 events\)/)
+    expect(out).toMatch(/\(5 events\)/)
   })
 
   test('filters to one project', async () => {
@@ -50,24 +47,24 @@ describe('stats', () => {
   test('/mod-stats lists every mod in marketplace.json, including ones with no rows', async ($: any, on: any) => {
     const files: Record<string, string> = {
       '/home/t/.claude/plugins/known_marketplaces.json': JSON.stringify({ 'god-mods': { installLocation: '/m' } }),
-      '/m/.claude-plugin/marketplace.json': JSON.stringify({ plugins: [{ name: 'brand-new-mod' }, { name: 'switchboard' }] }),
+      '/m/.claude-plugin/marketplace.json': JSON.stringify({ plugins: [{ name: 'brand-new-mod' }, { name: 'search-router' }] }),
     }
     on('env.get', () => ({ value: '/home/t' }))
     on('fs.read', ($: any, e: any) => ({ value: files[e.path] ?? '' }))
-    on('process.run', () => ({ value: { exitCode: 0, stdout: L({ v: 2, mod: 'switchboard', event: 'loaded', ver: '1.0.0' }), stderr: '' } }))
+    on('process.run', () => ({ value: { exitCode: 0, stdout: L({ v: 2, mod: 'search-router', event: 'loaded', ver: '1.0.0' }), stderr: '' } }))
     on('clock.now', () => ({ value: NOW }))
     const out = await $.command.run({ command: 'mod-stats', args: '' })
     expect(out.text).toMatch(/No events: brand-new-mod/)
-    expect(out.text).toMatch(/switchboard: no outcomes/)
+    expect(out.text).toMatch(/search-router: no outcomes/)
   })
 
   test('/mod-stats still reports when the marketplace manifest is unreadable', async ($: any, on: any) => {
     on('env.get', () => ({ value: '/home/t' }))
     on('fs.read', () => { throw new Error('ENOENT') })
-    on('process.run', () => ({ value: { exitCode: 0, stdout: L({ v: 2, mod: 'switchboard', event: 'loaded', ver: '1.0.0' }), stderr: '' } }))
+    on('process.run', () => ({ value: { exitCode: 0, stdout: L({ v: 2, mod: 'search-router', event: 'loaded', ver: '1.0.0' }), stderr: '' } }))
     on('clock.now', () => ({ value: NOW }))
     const out = await $.command.run({ command: 'mod-stats', args: '' })
-    expect(out.text).toMatch(/switchboard: no outcomes/)
+    expect(out.text).toMatch(/search-router: no outcomes/)
     expect(out.text).not.toMatch(/No events/)
   })
 
@@ -76,11 +73,11 @@ describe('stats', () => {
       L({ v: 2, mod: 'danger-guard', event: 'loaded', ver: '0.4.2' }),
       L({ v: 2, mod: 'mod-faults', event: 'fault', plugin: 'danger-guard', hookEvent: 'tool.call', outcome: 'skipped', reasonKind: 'none' }),
       L({ v: 2, mod: 'mod-faults', event: 'fault', plugin: 'danger-guard@god-mods', hookEvent: 'tool.call', outcome: 'caught', reasonKind: 'none' }),
-      L({ v: 2, mod: 'mod-faults', event: 'fault', plugin: 'switchboard', hookEvent: 'agent.spawn', outcome: 'expired', reasonKind: 'timeout' }),
+      L({ v: 2, mod: 'mod-faults', event: 'fault', plugin: 'search-router', hookEvent: 'agent.spawn', outcome: 'expired', reasonKind: 'timeout' }),
     ].join('\n')
-    const out = report(parse(text), 0, 7, undefined, ['danger-guard', 'switchboard', 'test-on-edit'])
+    const out = report(parse(text), 0, 7, undefined, ['danger-guard', 'search-router', 'test-on-edit'])
     expect(out).toMatch(/danger-guard: no outcomes · loaded 1× \(v0\.4\.2\), 0 hook calls · 2 faults/)
-    expect(out).toMatch(/switchboard: no outcomes · 1 fault$/m)
+    expect(out).toMatch(/search-router: no outcomes · 1 fault$/m)
     expect(out).toMatch(/mod-faults: 3 hook faults recorded across mods/)
     expect(out).toMatch(/No events: test-on-edit$/m)
   })

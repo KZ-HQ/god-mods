@@ -29,7 +29,6 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 | prompt-shaper | Expands your shorthand and attaches git state to each prompt; adds a project-toolchain note to the system prompt |
 | search-router | Steers web search to Exa and scraping to Firecrawl, and fails over when either runs out of credits; `/search-router` |
 | secret-scrubber | Masks API keys and tokens in tool output, and refuses to write them into source files |
-| switchboard | Picks Haiku, Sonnet or Opus for each subagent from its task; `/route` |
 | test-on-edit | When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt |
 | topic-drift | Band that suggests a fresh session when a prompt drifts off the session's topic |
 | worktree-janitor | Lists agent worktrees with their PR state and removes merged ones on your say-so; `/worktrees` |
