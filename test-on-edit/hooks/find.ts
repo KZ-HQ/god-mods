@@ -29,11 +29,21 @@ export function candidates(path: string, root: string): string[] {
   ])
 }
 
-export type Project = { hasUvLock: boolean; deps: readonly string[] }
+// modRoot: the nearest folder above the test with .claude-plugin/plugin.json (a mod), relative to the repo root
+export type Project = { hasUvLock: boolean; deps: readonly string[]; modRoot?: string }
+
+// Folders from the test's own up to (not including) the repo root, nearest first
+export function parents(test: string): string[] {
+  const parts = test.split('/').slice(0, -1)
+
+  return parts.map((_, i) => parts.slice(0, parts.length - i).join('/'))
+}
 
 // The command that runs one test file in this project
 export function runner(test: string, p: Project): string {
-  const q = `'${test.replace(/'/g, `'\\''`)}'`
+  const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
+  const q = quote(test)
+  if (p.modRoot !== undefined) return `claude plugin test ${quote(p.modRoot || '.')}`
   if (test.endsWith('.py')) return p.hasUvLock ? `uv run pytest -q ${q}` : `python3 -m pytest -q ${q}`
   if (p.deps.includes('vitest')) return `npx vitest run ${q}`
   if (p.deps.includes('jest')) return `npx jest ${q}`

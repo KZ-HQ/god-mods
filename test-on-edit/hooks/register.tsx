@@ -1,6 +1,6 @@
 import type { EngineInterface, On, Register } from 'claude-code'
 
-import { candidates, runner, summary } from './find.ts'
+import { candidates, parents, runner, summary } from './find.ts'
 
 const TIMEOUT_MS = 60_000
 
@@ -11,7 +11,15 @@ let isOn = true
 const edited = new Set<string>()
 let pending: string | undefined
 
-async function project($: EngineInterface, root: string) {
+async function project($: EngineInterface, root: string, rel: string) {
+  let modRoot: string | undefined
+  for (const dir of parents(rel)) {
+    if (await $.fs.exists(`${root}/${dir}/.claude-plugin/plugin.json`).catch(() => false)) {
+      modRoot = dir
+      break
+    }
+  }
+  if (modRoot === undefined && (await $.fs.read(`${root}/${rel}`).catch(() => '')).includes(`'claude-code/testing'`)) modRoot = parents(rel)[0] ?? ''
   const hasUvLock = await $.fs.exists(`${root}/uv.lock`).catch(() => false)
   let deps: string[] = []
   try {
@@ -21,7 +29,7 @@ async function project($: EngineInterface, root: string) {
     // No package.json
   }
 
-  return { hasUvLock, deps }
+  return { hasUvLock, deps, modRoot }
 }
 
 type Result = { test: string; ok: boolean; note: string }
@@ -36,7 +44,7 @@ async function runTest($: EngineInterface, test: string, root: string): Promise<
   if (running.has(test)) return undefined
   running.add(test)
   const rel = test.startsWith(`${root}/`) ? test.slice(root.length + 1) : test
-  const command = runner(rel, await project($, root))
+  const command = runner(rel, await project($, root, rel))
   const started = await $.clock.now()
   try {
     const r = await $.process.run(['/bin/zsh', '-lc', command], { cwd: root, timeoutMs: TIMEOUT_MS })

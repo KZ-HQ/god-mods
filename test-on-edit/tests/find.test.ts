@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { candidates, runner } from '../hooks/find.ts'
+import { candidates, parents, runner } from '../hooks/find.ts'
 
 describe('find', () => {
   test('maps a source file to its usual test files', async () => {
@@ -16,6 +16,12 @@ describe('find', () => {
     expect(runner('test/a.test.mjs', { hasUvLock: false, deps: [] })).toBe("node --test 'test/a.test.mjs'")
     expect(runner('tests/test_a.py', { hasUvLock: true, deps: [] })).toBe("uv run pytest -q 'tests/test_a.py'")
     expect(runner('src/a.test.ts', { hasUvLock: false, deps: ['vitest'] })).toBe("npx vitest run 'src/a.test.ts'")
+  })
+
+  test('runs a mod test with claude plugin test on its mod folder', async () => {
+    expect(parents('agent-spend/tests/spend.test.ts')).toEqual(['agent-spend/tests', 'agent-spend'])
+    expect(runner('agent-spend/tests/spend.test.ts', { hasUvLock: false, deps: ['vitest'], modRoot: 'agent-spend' })).toBe("claude plugin test 'agent-spend'")
+    expect(runner('tests/a.test.ts', { hasUvLock: false, deps: [], modRoot: '' })).toBe("claude plugin test '.'")
   })
 })
 
