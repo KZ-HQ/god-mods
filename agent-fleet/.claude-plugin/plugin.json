@@ -1,9 +1,0 @@
-{
-  "name": "agent-fleet",
-  "version": "0.5.1",
-  "description": "Pane of running background agents: task, elapsed time, tokens, current tool, with a Stop button; /fleet",
-  "author": {
-    "name": "KeithZhu"
-  },
-  "types": "./types/index.d.ts"
-}
