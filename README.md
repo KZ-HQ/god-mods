@@ -32,7 +32,6 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 | switchboard | Picks Haiku, Sonnet or Opus for each subagent from its task; `/route` |
 | test-on-edit | When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt |
 | topic-drift | Band that suggests a fresh session when a prompt drifts off the session's topic |
-| where-am-i | Band with the session's goal and what Claude is doing; `/where` sets it (renamed from `/goal`, now a built-in), `/park` saves where you left off |
 | worktree-janitor | Lists agent worktrees with their PR state and removes merged ones on your say-so; `/worktrees` |
 
 ## Plugin order

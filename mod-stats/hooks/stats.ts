@@ -75,8 +75,6 @@ function line(mod: string, rows: Row[]): string {
       return `${of('found').length} scans found merged worktrees · ${sum('cleaned', 'removed')} removed`
     case 'mod-faults':
       return `${of('fault').length} hook faults recorded across mods`
-    case 'where-am-i':
-      return `${of('park').length} parks · ${of('parked-shown').length} parked notes shown on return`
     default: {
       const counts = new Map<string, number>()
       for (const r of rows) counts.set(r.event, (counts.get(r.event) ?? 0) + 1)

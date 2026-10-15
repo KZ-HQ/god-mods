@@ -83,12 +83,6 @@
       "version": "0.4.2"
     },
     {
-      "name": "where-am-i",
-      "source": "./where-am-i",
-      "description": "Band with the session's goal and what Claude is doing; /goal sets it, /park saves where you left off",
-      "version": "0.4.0"
-    },
-    {
       "name": "next-steps",
       "source": "./next-steps",
       "description": "Suggests 2-3 likely next prompts after each turn, press 1/2/3 to draft one; /next off",
@@ -98,7 +92,7 @@
       "name": "mod-stats",
       "source": "./mod-stats",
       "description": "/mod-stats [days]: what each mod did, cost and saved",
-      "version": "0.5.1"
+      "version": "0.5.2"
     },
     {
       "name": "mod-faults",
