@@ -6,7 +6,6 @@ import type { GaugeSnap } from '../types'
 // Thresholds, in percent of the context window
 const WARN_AT = 60
 const HOT_AT = 80
-const OFFER_COMPACT_AT = 70
 const BAR_CELLS = 10
 // Absolute size where every call re-reads enough cache to drain the 5h limit fast
 const NAG_TOKENS = 400_000
@@ -26,21 +25,6 @@ const toSnap = (u: Pick<SessionUsage, 'context' | 'rateLimits' | 'cost'>): Gauge
 })
 
 const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
-// Says what happened: a compaction takes a while, and a refusal used to vanish
-async function compactNow($: EngineInterface): Promise<void> {
-  $.ui.status('context-gauge: compacting…')
-  try {
-    const r = await $.session.compact()
-    track($, 'context-gauge', 'compact', r.skip !== undefined ? { outcome: 'skipped', reason: r.skip } : { outcome: 'done', before: r.tokensBefore, after: r.tokensAfter })
-    if (r.skip !== undefined) $.ui.toast(`context-gauge: compaction skipped: ${r.skip}`)
-    else $.ui.toast(`context-gauge: compacted${r.tokensBefore && r.tokensAfter ? ` ${k(r.tokensBefore)} → ${k(r.tokensAfter)}` : ''}`)
-  } catch (err) {
-    track($, 'context-gauge', 'compact', { outcome: 'error', reason: err instanceof Error ? err.message : String(err) })
-    $.ui.toast(`context-gauge: could not compact (${err instanceof Error ? err.message : String(err)}); try /compact`)
-  } finally {
-    $.ui.status(undefined)
-  }
-}
 
 // <metrics: generated from shared/metrics.ts by shared/sync.sh>
 // Shared mod metrics (schema v2). Source of truth: ~/.claude/mods/shared/metrics.ts.
@@ -162,7 +146,7 @@ export const register: Register = on => {
     await update($, snap, () => s)
     const big = (s.tokens ?? 0) >= NAG_TOKENS
     if (big && !hasNagged) track($, 'context-gauge', 'nag', { tokens: s.tokens })
-    if (big && !hasNagged) $.ui.toast(`context-gauge: context is ${k(s.tokens ?? 0)}; every call now re-reads it. Compact or start a new session to save usage.`)
+    if (big && !hasNagged) $.ui.toast(`context-gauge: context is ${k(s.tokens ?? 0)}; every call now re-reads it. Run /compact or start a new session to save usage.`)
     hasNagged = big
 
     return next(e)
@@ -202,7 +186,7 @@ export const register: Register = on => {
     if (e.props.hasSurvey || s === null || (await read($, isHidden))) return next(e)
 
     const turn = await read($, lastTurn)
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const { Box, Text } = $.ui.resolve(e)
 
     const pct = s.percent
     const filled = pct === null ? 0 : Math.min(BAR_CELLS, Math.round((pct / 100) * BAR_CELLS))
@@ -212,7 +196,7 @@ export const register: Register = on => {
 
     const parts: string[] = []
     parts.push(pct === null ? 'ctx —' : `${pct}% · ${k(s.tokens ?? 0)}/${k(s.window)}`)
-    if (isBig) parts.push('over 400k: compact to save usage')
+    if (isBig) parts.push('over 400k: /compact to save usage')
     if (turn) parts.push(`last turn ${usd(turn.usd)} · ${turn.seconds}s`)
     if (s.usd !== null) parts.push(`session ${usd(s.usd)}`)
     if (s.fiveHour !== null) parts.push(`5h ${Math.round(s.fiveHour)}%`)
@@ -224,10 +208,6 @@ export const register: Register = on => {
         <Text dimColor={!isBig} color={isBig ? 'red' : undefined} wrap="truncate-end">
           {parts.join('  ·  ')}
         </Text>
-        {/* Compacting under a running turn rewrites the conversation it is using */}
-        {(isBig || (pct !== null && pct >= OFFER_COMPACT_AT)) && !e.props.isWorking && (
-          <Button key="compact" label="Compact" onPress={() => compactNow($)} />
-        )}
       </Box>
     )
     const below = await next(e)

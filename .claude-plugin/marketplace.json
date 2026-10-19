@@ -8,7 +8,7 @@
       "name": "context-gauge",
       "source": "./context-gauge",
       "description": "Band above the prompt: context fill, last turn's cost, session cost and rate limits; /gauge toggles it",
-      "version": "0.5.2"
+      "version": "0.6.0"
     },
     {
       "name": "danger-guard",

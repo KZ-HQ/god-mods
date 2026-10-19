@@ -39,7 +39,7 @@ describe('context-gauge band', () => {
     }
   })
 
-  test('shows fill and cost, and offers Compact only when hot', async ($, on) => {
+  test('shows fill and cost, and has no Compact button', async ($, on) => {
     engine(on)
     for (const surface of ['terminal', 'desktop'] as const) {
       await $.session.measure(measure(40))
@@ -49,9 +49,9 @@ describe('context-gauge band', () => {
       expect(await ui.find({ key: 'compact' })).toBeUndefined()
       await ui.unmount()
 
-      await $.session.measure(measure(75))
+      await $.session.measure(measure(95))
       ui = await $.ui.mount({ plugin: 'context-gauge', surface, ...BAND })
-      expect(await ui.find({ key: 'compact' })).toBeDefined()
+      expect(await ui.find({ key: 'compact' })).toBeUndefined()
       await ui.unmount()
     }
   })
@@ -63,14 +63,6 @@ describe('context-gauge band', () => {
     await $.command.run({ command: 'gauge', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } })
     const ui = await $.ui.mount({ plugin: 'context-gauge', surface: 'terminal', ...BAND })
     expect(await ui.find({ type: 'Text', text: /50%/ })).toBeUndefined()
-  })
-
-  test('no Compact button while a turn is running', async ($, on) => {
-    engine(on)
-    await $.session.measure(measure(75))
-    const ui = await $.ui.mount({ plugin: 'context-gauge', surface: 'terminal', ...BAND, props: { ...BAND.props, isWorking: true } })
-    expect(await ui.find({ type: 'Text', text: /75%/ })).toBeDefined()
-    expect(await ui.find({ key: 'compact' })).toBeUndefined()
   })
 
   test('a hidden gauge stays hidden in the next session', async ($, on) => {
@@ -99,53 +91,10 @@ describe('context-gauge band', () => {
     expect(toasts.length).toBe(1)
     const ui = await $.ui.mount({ plugin: 'context-gauge', surface: 'terminal', ...BAND })
     expect(await ui.find({ type: 'Text', text: /over 400k/ })).toBeDefined()
-    expect(await ui.find({ key: 'compact' })).toBeDefined()
     await ui.unmount()
     await $.session.measure(big(100_000))
     await $.session.measure(big(410_000))
     expect(toasts.length).toBe(2)
-  })
-})
-
-describe('compact button', () => {
-  test('pressing it compacts the session', async ($, on) => {
-    engine(on)
-    let calls = 0
-    on('session.compact', () => {
-      calls++
-
-      return { messages: [{ role: 'user', text: 'summary', toolUses: [] }] as never, tokensBefore: 500_000, tokensAfter: 40_000 }
-    })
-    const toasts: string[] = []
-    on('ui.toast', (_$, e) => {
-      toasts.push(e.text)
-
-      return { value: undefined }
-    })
-    on('ui.status', () => ({ value: undefined }))
-    await $.session.measure(measure(75))
-    const ui = await $.ui.mount({ plugin: 'context-gauge', surface: 'terminal', ...BAND })
-    await ui.press({ key: 'compact' })
-    for (let i = 0; i < 50 && toasts.length === 0; i++) await $.session.measure(measure(75))
-    expect(calls).toBe(1)
-    expect(toasts).toEqual(['context-gauge: compacted 500k → 40k'])
-  })
-
-  test('a veto is reported, not lost', async ($, on) => {
-    engine(on)
-    on('session.compact', () => ({ skip: 'blocked by a PreCompact hook' }))
-    const toasts: string[] = []
-    on('ui.toast', (_$, e) => {
-      toasts.push(e.text)
-
-      return { value: undefined }
-    })
-    on('ui.status', () => ({ value: undefined }))
-    await $.session.measure(measure(75))
-    const ui = await $.ui.mount({ plugin: 'context-gauge', surface: 'terminal', ...BAND })
-    await ui.press({ key: 'compact' })
-    for (let i = 0; i < 50 && toasts.length === 0; i++) await $.session.measure(measure(75))
-    expect(toasts[0]).toMatch(/skipped: blocked by a PreCompact hook/)
   })
 })
 
