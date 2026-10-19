@@ -49,8 +49,6 @@ function line(mod: string, rows: Row[]): string {
 
       return `${of('nag').length} over-400k warnings · compact: ${done.length} done (${k(freed)} tokens freed), ${where('compact', 'outcome', 'skipped')} skipped, ${where('compact', 'outcome', 'error')} failed`
     }
-    case 'danger-guard':
-      return `${of('asked').length} risky commands asked about, you cancelled ${where('asked', 'answer', 'cancel')}`
     case 'merge-gate':
       return `${of('verdict').length} merges checked: ${['pass', 'fail', 'pending', 'none'].map(v => `${where('verdict', 'kind', v)} ${v}`).join(', ')} · asked ${of('asked').length}, held ${where('asked', 'answer', 'hold')}`
     case 'secret-scrubber':

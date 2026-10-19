@@ -8,7 +8,7 @@ In Claude Code:
 
 ```
 /plugin marketplace add KZ-HQ/god-mods
-/plugin install danger-guard@god-mods
+/plugin install context-gauge@god-mods
 ```
 
 Install the mods you want one by one. Restart Claude Code (a full restart; `/reload-plugins` does not load new mod code) for them to take effect.
@@ -19,7 +19,6 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 | --- | --- |
 | agent-spend | `/spend [days] [here]`: pane of subagent spend by model and agent type, with the costliest agents, from subagent transcripts |
 | context-gauge | Band above the prompt: context fill, last turn's cost, session cost and rate limits; `/gauge` toggles it |
-| danger-guard | Holds risky shell commands and writes to protected data, previews what they would change, and asks before they run |
 | long-turn-notify | macOS notification when a long turn finishes or Claude needs your input, in terminal sessions |
 | merge-gate | Holds `gh pr merge` until CI passes on the PR head; `/gate` runs the project's CI steps locally |
 | mod-stats | `/mod-stats [days]`: what each mod did, cost and saved, and how often it faulted |
@@ -36,7 +35,7 @@ Installed mods nest in the order of `enabledPlugins` in `~/.claude/settings.json
 ```json
 "enabledPlugins": {
   "mod-faults@god-mods": true,
-  "danger-guard@god-mods": true,
+  "context-gauge@god-mods": true,
   ...
 }
 ```

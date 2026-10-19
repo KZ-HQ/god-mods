@@ -12,14 +12,14 @@ describe('stats', () => {
       L({ mod: 'next-steps', event: 'shown', ok: true, usd: 0.0001 }),
       L({ mod: 'next-steps', event: 'shown', ok: true, usd: 0.0001 }),
       L({ mod: 'next-steps', event: 'clicked', n: 1 }),
-      L({ mod: 'danger-guard', event: 'asked', answer: 'cancel' }),
+      L({ mod: 'secret-scrubber', event: 'masked' }),
       L({ mod: 'context-gauge', event: 'compact', outcome: 'done', before: 500_000, after: 40_000 }),
       '{torn',
-      JSON.stringify({ t: '2026-09-01T00:00:00Z', mod: 'danger-guard', event: 'asked', answer: 'run' }),
+      JSON.stringify({ t: '2026-09-01T00:00:00Z', mod: 'secret-scrubber', event: 'masked' }),
     ].join('\n')
     const out = report(parse(text), NOW - 7 * 86_400_000, 7, undefined, ['merge-gate', 'some-mod'])
     expect(out).toMatch(/next-steps: 2 suggestion sets, 1 clicked \(50%\)/)
-    expect(out).toMatch(/danger-guard: 1 risky commands asked about, you cancelled 1/)
+    expect(out).toMatch(/secret-scrubber: 1 outputs masked/)
     expect(out).toMatch(/compact: 1 done \(460k tokens freed\)/)
     expect(out).toMatch(/No events: .*merge-gate/)
     expect(out).toMatch(/\(5 events\)/)

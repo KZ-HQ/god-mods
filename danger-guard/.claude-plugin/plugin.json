@@ -1,8 +1,0 @@
-{
-  "name": "danger-guard",
-  "version": "0.5.0",
-  "description": "Holds risky shell commands and writes to protected data, previews what they would change, has Haiku summarise what it does and risks, and asks before they run",
-  "author": {
-    "name": "KeithZhu"
-  }
-}
