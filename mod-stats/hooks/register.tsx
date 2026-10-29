@@ -1,6 +1,6 @@
 import type { EngineInterface, EventName, Next, On, Register } from 'claude-code'
 
-import { parse, report } from './stats.ts'
+import { alerts, parse, report } from './stats.ts'
 
 const DAY_MS = 86_400_000
 // The newest lines are enough for any window /mod-stats shows
@@ -194,12 +194,27 @@ function thisSession(): string {
   return `This session: faults ${counted}; watching ${seen.size} of ${GOD_MODS.size} mods (list: ${listSource})${blindText}`
 }
 
+const ALERTED_KEY = 'alerted'
+
+// Toasts mods that turned dormant or slow since the last toast; a mod that recovers and slips again toasts again
+async function alertNew($: EngineInterface) {
+  const r = await $.process.run(['/bin/sh', '-c', READ], { timeoutMs: 10_000 })
+  const now = alerts(parse(r.stdout), await $.clock.now(), [...GOD_MODS])
+  const before = new Set(((await $.store.get(ALERTED_KEY)) as string[] | undefined) ?? [])
+  const fresh = now.filter(a => !before.has(a.key))
+  await $.store.set(ALERTED_KEY, now.map(a => a.key))
+  if (!fresh.length) return
+  track($, 'mod-stats', 'alert', { kinds: fresh.map(a => a.key.split(':')[0]), n: fresh.length })
+  $.ui.toast(`mod-stats: ${fresh.map(a => a.text).join('; ')} (/mod-stats)`)
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
     await loadModList($)
     await $.command.register({ name: 'mod-stats', description: 'What each mod did, cost and saved, its faults and hook time: /mod-stats [days] [here]' })
     void $.process.run(['/bin/sh', '-c', TRIM], { timeoutMs: 10_000 }).catch(() => undefined)
+    void alertNew($).catch(() => undefined)
     const started = await watch($, e, next)
     const unseen = blind()
     if (unseen.length) {

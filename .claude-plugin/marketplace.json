@@ -50,7 +50,7 @@
       "name": "mod-stats",
       "source": "./mod-stats",
       "description": "/mod-stats [days] [here]: what each mod did, cost and saved, active/stale/dormant, hook time and faults; watches the other mods' hooks for faults",
-      "version": "0.6.0"
+      "version": "0.7.0"
     }
   ],
   "description": "Claude Code mods by KeithZhu"

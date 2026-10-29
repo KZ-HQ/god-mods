@@ -68,7 +68,7 @@ function line(mod: string, rows: Row[]): string {
 }
 
 // v2 rows the shared metrics block writes for every mod; everything else is an outcome row
-const TELEMETRY = new Set(['loaded', 'turn', 'blind', 'latency'])
+const TELEMETRY = new Set(['loaded', 'turn', 'blind', 'latency', 'alert'])
 // mod-stats took over mod-faults' watching; older rows carry the old name
 const WATCHER = new Set(['mod-stats', 'mod-faults'])
 // Outcome rows whose chars went into Claude's context, as notes or a system-prompt section
@@ -166,4 +166,29 @@ export function report(all: Row[], sinceMs: number, days: number, project?: stri
   out.push('Token figures for notes are estimates (4 characters per token); $ are list prices.')
 
   return out.join('\n')
+}
+
+// Guards whose quiet weeks are the point: never called dormant in an alert
+const GUARDS = new Set(['secret-scrubber', 'mod-stats', 'mod-faults'])
+
+// What the start-up toast names: mods loaded this past week but never used in it (and around longer than
+// that, so a new install gets its week), and mods with a hook call of SLOW_MS or more in it. Keys are stable,
+// so the caller can toast only what is new since its last toast.
+// listed: the marketplace's mods, so a removed one is not named; empty means no filter
+export function alerts(all: Row[], nowMs: number, listed: string[] = [], days = 7): { key: string; text: string }[] {
+  const since = nowMs - days * DAY_MS
+  const rows = all.filter(r => Date.parse(r.t) >= since)
+  const out: { key: string; text: string }[] = []
+  for (const mod of [...new Set(rows.map(r => r.mod))].sort()) {
+    if (GUARDS.has(mod) || (listed.length && !listed.includes(mod))) continue
+    const first = all.find(r => r.mod === mod)
+    if (!first || Date.parse(first.t) >= since) continue
+    if (label(rows.filter(r => r.mod === mod), nowMs) === 'dormant') out.push({ key: `dormant:${mod}`, text: `${mod} is dormant: loaded but not used in ${days} days` })
+  }
+  for (const [mod, l] of latency(rows)) {
+    if (listed.length && !listed.includes(mod)) continue
+    if (l.max >= SLOW_MS) out.push({ key: `slow:${mod}`, text: `${mod} is slow: a ${l.maxEvent} hook took ${(l.max / 1000).toFixed(1)}s` })
+  }
+
+  return out
 }
