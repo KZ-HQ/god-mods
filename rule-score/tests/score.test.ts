@@ -38,7 +38,7 @@ function engine(on: On, seed: Record<string, unknown> = {}) {
 
 const load = ($: EngineInterface, content = CLAUDE_MD) =>
   $.prompt.context({ blocks: [], instructionFiles: [{ path: '/r/CLAUDE.md', kind: 'project', content }] } as never)
-const bash = ($: EngineInterface, command: string) => $.tool.call({ tool: 'Bash', input: { command } } as never)
+const bash = ($: EngineInterface, command: string) => $.tool.call({ tool: 'Bash', command } as never)
 const endTurn = ($: EngineInterface) => $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId: 't', reason: 'answer' })
 const settle = async () => {
   for (let i = 0; i < 200; i++) await Promise.resolve()
@@ -61,7 +61,7 @@ describe('rule-score', () => {
     await bash($, 'FOO=1 npm test')
     await bash($, 'git push --force origin main')
     await bash($, 'cat README.md | head')
-    await $.tool.call({ tool: 'Read', input: { file_path: '/r/a' } } as never)
+    await $.tool.call({ tool: 'Read', file_path: '/r/a' } as never)
     await endTurn($)
     const out = await $.command.run({ command: 'rules', args: '' })
     const text = (out as { text: string }).text
@@ -73,12 +73,12 @@ describe('rule-score', () => {
   test('counts a turn with edits as following the tests rule only if tests ran after the edit', async ($, on) => {
     engine(on)
     await load($, '- Always run tests after code changes.')
-    await $.tool.call({ tool: 'Edit', input: { file_path: '/r/a.ts' } } as never)
+    await $.tool.call({ tool: 'Edit', file_path: '/r/a.ts' } as never)
     await bash($, 'pnpm test')
     await endTurn($)
     await bash($, 'ls')
     await endTurn($)
-    await $.tool.call({ tool: 'Write', input: { file_path: '/r/b.ts' } } as never)
+    await $.tool.call({ tool: 'Write', file_path: '/r/b.ts' } as never)
     await endTurn($)
     const text = ((await $.command.run({ command: 'rules', args: '' })) as { text: string }).text
     expect(text).toContain('1 ok    1 broken    1 sessions  run tests after edits')
@@ -119,6 +119,13 @@ describe('rule-score', () => {
     expect(out.blocks.find(b => b.name === 'ruleScore')?.text).toContain('never `rm -rf`')
     const quiet = await load($, '- Never run `curl`.')
     expect(quiet.blocks).toHaveLength(0)
+  })
+
+  test('skips loose phrasing that is not a clear preference', async ($, on) => {
+    const rows = engine(on)
+    await load($, '- Use `make` here, not `bash build.sh`.\n- Use `rg` when it is not `grep -r` speed you need.')
+    await settle()
+    expect(rows.find(x => x.event === 'rules')).toMatchObject({ prefer: 0, never: 0, tests: 0 })
   })
 
   test('says what it reads when no rule is checkable', async ($, on) => {

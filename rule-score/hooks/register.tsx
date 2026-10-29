@@ -1,4 +1,4 @@
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, On, Register } from 'claude-code'
 
 // A rule mined from an instruction file, checkable from tool calls alone.
 //   prefer: use `a` (a command, or a built-in tool name) instead of `b` (a command)
@@ -16,7 +16,7 @@ const ALERT_EVERY_MS = 7 * 24 * 3600 * 1000
 const CANDIDATE = { violated: 3, rate: 0.5, sessions: 2 }
 
 const NEG = String.raw`(?:never|don'?t|do not|avoid)`
-const ALT = String.raw`(?:instead of|rather than|over|not)`
+const ALT = String.raw`(?:instead of|rather than|over)`
 const CODE = '`([^`]+)`'
 
 // A backticked pattern is usable only if it reads as a command: starts with a word, no placeholders.
@@ -191,23 +191,23 @@ async function save($: EngineInterface) {
 type Row = { id: string; label: string; f: number; v: number; n: number; flag: boolean }
 
 async function scorecard($: EngineInterface): Promise<{ rows: Row[]; sessions: Sessions }> {
-    const known = ((await $.store.get('rules')) as Record<string, Rule> | undefined) ?? {}
-    const sessions = ((await $.store.get('sessions')) as Sessions | undefined) ?? {}
-    const rows = Object.entries(known).map(([id, r]) => {
-      let f = 0, v = 0, bad = 0, n = 0
-      for (const s of Object.values(sessions)) {
-        const t = s.tally[id]
-        if (!t) continue
-        n++
-        f += t[0]
-        v += t[1]
-        if (t[1]) bad++
-      }
-      const label = r.kind === 'tests' ? 'run tests after edits' : r.kind === 'never' ? `never \`${r.b}\`` : `\`${r.a}\` not \`${r.b}\``
-      const flag = v >= CANDIDATE.violated && v / (f + v) >= CANDIDATE.rate && bad >= CANDIDATE.sessions
+  const known = ((await $.store.get('rules')) as Record<string, Rule> | undefined) ?? {}
+  const sessions = ((await $.store.get('sessions')) as Sessions | undefined) ?? {}
+  const rows = Object.entries(known).map(([id, r]) => {
+    let f = 0, v = 0, bad = 0, n = 0
+    for (const s of Object.values(sessions)) {
+      const t = s.tally[id]
+      if (!t) continue
+      n++
+      f += t[0]
+      v += t[1]
+      if (t[1]) bad++
+    }
+    const label = r.kind === 'tests' ? 'run tests after edits' : r.kind === 'never' ? `never \`${r.b}\`` : `\`${r.a}\` not \`${r.b}\``
+    const flag = v >= CANDIDATE.violated && v / (f + v) >= CANDIDATE.rate && bad >= CANDIDATE.sessions
 
-      return { id, label, f, v, n, flag }
-    })
+    return { id, label, f, v, n, flag }
+  })
 
   return { rows, sessions }
 }
@@ -271,7 +271,7 @@ export const register: Register = on => {
       st.edited = true
       st.tested = false
     }
-    const command = e.tool === 'Bash' ? String((e.input as { command?: string }).command ?? '') : ''
+    const command = e.tool === 'Bash' ? String((e as { command?: string }).command ?? '') : ''
     if (command) {
       st.bashCalls++
       if (TEST_CMD.test(command)) st.tested = true
