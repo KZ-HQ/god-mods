@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { TRIM } from '../hooks/register.tsx'
-import { parse, report } from '../hooks/stats.ts'
+import { alerts, parse, report } from '../hooks/stats.ts'
 
 const NOW = Date.parse('2026-10-10T12:00:00Z')
 const L = (o: object) => JSON.stringify({ t: '2026-10-10T10:00:00Z', project: 'my-app', ...o })
@@ -162,6 +162,54 @@ describe('health', () => {
       L({ mod: 'prompt-shaper', event: 'gitcheck', noted: true }),
     ].join('\n')
     expect(report(parse(text), 0, 7)).toMatch(/1 git notes \(~10 tokens added\) .* Claude checked git itself 2×, 1 after a note/)
+  })
+})
+
+describe('alerts', () => {
+  const at = (t: string, o: object) => JSON.stringify({ t, project: 'my-app', v: 2, ...o })
+  const LOG = [
+    at('2026-09-20T10:00:00Z', { mod: 'old-mod', event: 'loaded' }),
+    at('2026-10-09T10:00:00Z', { mod: 'old-mod', event: 'loaded' }),
+    at('2026-09-20T10:00:00Z', { mod: 'secret-scrubber', event: 'loaded' }),
+    at('2026-10-09T10:00:00Z', { mod: 'secret-scrubber', event: 'loaded' }),
+    at('2026-10-09T10:00:00Z', { mod: 'new-mod', event: 'loaded' }),
+    at('2026-10-09T10:00:00Z', { mod: 'mod-stats', event: 'latency', mods: { 'next-steps': { calls: 1, ms: 3100, max: 3100, maxEvent: 'turn.complete' } } }),
+  ].join('\n')
+
+  test('skips mods no longer in the marketplace', async () => {
+    expect(alerts(parse(LOG), NOW, ['next-steps']).map(a => a.key)).toEqual(['slow:next-steps'])
+  })
+
+  test('names mods dormant a full week and slow hooks, sparing new installs and guards', async () => {
+    expect(alerts(parse(LOG), NOW)).toEqual([
+      { key: 'dormant:old-mod', text: 'old-mod is dormant: loaded but not used in 7 days' },
+      { key: 'slow:next-steps', text: 'next-steps is slow: a turn.complete hook took 3.1s' },
+    ])
+  })
+
+  test('session start toasts new alerts once, not again next session', async ($: any, on: any) => {
+    mock.store(on)
+    const toasts: string[] = []
+    on('ui.toast', (_$: any, e: any) => {
+      toasts.push(e.text)
+
+      return { value: undefined }
+    })
+    on('session.start', (_$: any, e: any) => ({ cwd: e.cwd }))
+    on('command.register', (_$: any, e: any) => ({ value: { command: e.name } }))
+    on('clock.now', () => ({ value: NOW }))
+    on('session.cwd', () => ({ value: '/r' }))
+    on('process.run', (_$: any, e: any) => ({ value: { exitCode: 0, stdout: e.argv[2]?.startsWith('tail') ? LOG : '', stderr: '' } }))
+    const settle = async () => {
+      for (let i = 0; i < 500; i++) await Promise.resolve()
+    }
+    await $.session.start({ cwd: '/r' })
+    await settle()
+    expect(toasts.filter(t => t.startsWith('mod-stats: old-mod is dormant'))).toHaveLength(1)
+    expect(toasts.some(t => t.includes('next-steps is slow'))).toBe(true)
+    await $.session.start({ cwd: '/r' })
+    await settle()
+    expect(toasts.filter(t => t.includes('dormant'))).toHaveLength(1)
   })
 })
 
