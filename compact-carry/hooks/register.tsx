@@ -137,12 +137,21 @@ function finishWatch($: EngineInterface): void {
 }
 
 export const register: Register = on => {
-  logLoaded(on)
-
   files = []
   task = ''
   todos = []
   watch = undefined
+
+  // A new session (start, /clear, resume) starts with nothing carried
+  on('session.start', async ($, e, next) => {
+    count($, 'session.start')
+    files = []
+    task = ''
+    todos = []
+    watch = undefined
+
+    return next(e)
+  })
 
   on('prompt.submit', async ($, e, next) => {
     count($, 'prompt.submit')
@@ -154,7 +163,7 @@ export const register: Register = on => {
   on('tool.call', async ($, e, next) => {
     count($, 'tool.call')
     if (e.agentId !== undefined) return next(e)
-    const input = (e.input ?? {}) as { file_path?: string; notebook_path?: string; todos?: Todo[] }
+    const input = e as unknown as { file_path?: string; notebook_path?: string; todos?: Todo[] }
     if (e.tool === 'TodoWrite' && Array.isArray(input.todos)) todos = input.todos
     const path = input.file_path ?? input.notebook_path
     if (FILE_TOOLS.has(e.tool) && typeof path === 'string') {

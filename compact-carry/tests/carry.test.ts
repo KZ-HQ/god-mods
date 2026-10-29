@@ -24,7 +24,7 @@ const settle = async () => {
 }
 
 const tool = ($: any, name: string, input: Record<string, unknown>, agentId?: string) =>
-  $.tool.call({ tool: name, input, ...(agentId ? { agentId } : {}) } as never)
+  $.tool.call({ tool: name, tool_use_id: "u", ...input, ...(agentId ? { agentId } : {}) } as never)
 
 const compact = async ($: any): Promise<readonly SessionMessage[]> => {
   const r = await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'old', toolUses: [] }] } as never)
@@ -59,6 +59,15 @@ describe('carry', () => {
   test("ignores subagents' file use", async ($, on) => {
     engine(on)
     await tool($, 'Read', { file_path: '/r/sub.ts' }, 'agent-1')
+    const msgs = await compact($)
+    expect(msgs.length).toBe(1)
+  })
+
+  test('forgets earlier work on a new session (/clear)', async ($, on) => {
+    engine(on)
+    on('session.start', (_$, e) => ({ cwd: e.cwd }))
+    await tool($, 'Read', { file_path: '/r/a.ts' })
+    await $.session.start({ cwd: '/r' } as never)
     const msgs = await compact($)
     expect(msgs.length).toBe(1)
   })
