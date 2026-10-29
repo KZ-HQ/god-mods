@@ -125,6 +125,20 @@ describe('context hogs', () => {
     await ui.unmount()
   })
 
+  test('a huge Grep or Bash result does not toast', async ($, on) => {
+    engine(on)
+    on('tool.call', () => ({ result: {}, text: 'x'.repeat(200_000) }) as never)
+    const toasts: string[] = []
+    on('ui.toast', (_$, e) => {
+      toasts.push(e.text)
+
+      return { value: undefined }
+    })
+    await $.tool.call({ tool: 'Grep', pattern: 'a' } as never)
+    await $.tool.call({ tool: 'Bash', command: 'ls' } as never)
+    expect(toasts).toEqual([])
+  })
+
   test('a compaction clears the tally', async ($, on) => {
     engine(on)
     on('tool.call', () => ({ result: {}, text: 'x'.repeat(400) }) as never)

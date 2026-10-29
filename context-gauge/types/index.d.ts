@@ -17,6 +17,6 @@ export type AgentCost = { usd: number; agents: number }
 
 declare module 'claude-code' {
   interface PluginState {
-    'context-gauge': { snap: GaugeSnap | null; lastTurn: TurnCost | null; isHidden: boolean; agentCost: AgentCost | null; idle: Idle | null; hogs: Record<string, number> }
+    'context-gauge': { snap: GaugeSnap | null; lastTurn: TurnCost | null; isHidden: boolean; agentCost: AgentCost | null; idle: Idle | null; hogTop: { name: string; tokens: number } | null }
   }
 }
