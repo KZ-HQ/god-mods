@@ -1,0 +1,8 @@
+{
+  "name": "rule-score",
+  "version": "0.1.0",
+  "description": "/rules: how often Claude follows the checkable rules in your CLAUDE.md files, and which are ignored enough to become a hook",
+  "author": {
+    "name": "KeithZhu"
+  }
+}
