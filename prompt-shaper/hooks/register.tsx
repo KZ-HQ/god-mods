@@ -1,25 +1,9 @@
 import type { EngineInterface, On, Register } from 'claude-code'
 
-const STORE_KEY = 'shorthand'
 const SECTION_ID = 'prompt-shaper:toolchain'
 const MAX_GIT_FILES = 8
-
-type Shorthand = Record<string, string>
-
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-async function loadShorthand($: EngineInterface): Promise<Shorthand> {
-  const v = await $.store.get(STORE_KEY)
-
-  return v && typeof v === 'object' ? (v as Shorthand) : {}
-}
-
-// Which of the person's shorthand terms the prompt uses, as whole words.
-function expansionsIn(text: string, map: Shorthand): string[] {
-  return Object.entries(map)
-    .filter(([term]) => new RegExp(`(^|[^\\w-])${escape(term)}([^\\w-]|$)`, 'i').test(text))
-    .map(([term, meaning]) => `"${term}" = ${meaning}`)
-}
+// Commands that re-read what the git note already says
+const GIT_CHECK = /^\s*(?:cd [^&;]+(?:&&|;)\s*)?git(?: -C \S+)? (?:status|branch --show-current|rev-parse --abbrev-ref)\b/
 
 async function gitSummary($: EngineInterface): Promise<string | undefined> {
   try {
@@ -171,57 +155,31 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
-    await $.command.register({
-      name: 'shorthand',
-      description: 'List shorthand, or: /shorthand add <term> = <meaning>, /shorthand rm <term>',
-    })
     toolchain = await detectToolchain($)
     if (toolchain) track($, 'prompt-shaper', 'toolchain', { chars: toolchain.length })
 
     return next(e)
   })
 
-  on('command.run', { command: 'shorthand' }, async ($, e) => {
-    count($, 'command.run{shorthand}')
-    const map = await loadShorthand($)
-    const add = e.args.match(/^\s*add\s+(.+?)\s*=\s*(.+)$/)
-    const rm = e.args.match(/^\s*(rm|remove)\s+(.+?)\s*$/)
-
-    if (add) {
-      map[add[1]!] = add[2]!.trim()
-      await $.store.set(STORE_KEY, map)
-
-      return { text: `Shorthand saved: ${add[1]} = ${add[2]}` }
-    }
-    if (rm) {
-      delete map[rm[2]!]
-      await $.store.set(STORE_KEY, map)
-
-      return { text: `Shorthand removed: ${rm[2]}` }
-    }
-    const lines = Object.entries(map).map(([k, v]) => `  ${k} = ${v}`)
-
-    return { text: lines.length ? `Shorthand:\n${lines.join('\n')}` : 'No shorthand yet. Add one: /shorthand add app = the my-app project' }
-  })
-
   on('prompt.submit', async ($, e, next) => {
     count($, 'prompt.submit')
     if (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') return next(e)
 
-    const notes: string[] = []
-    const used = expansionsIn(e.text, await loadShorthand($))
-    if (used.length) notes.push(`The user's shorthand in this prompt: ${used.join('; ')}.`)
-
     // Only when it changed, so repeated prompts don't repeat it
     const git = await gitSummary($)
-    if (git !== undefined && git !== lastGit) {
-      notes.push(git)
-      lastGit = git
-    }
+    if (git === undefined || git === lastGit) return next(e)
+    lastGit = git
+    track($, 'prompt-shaper', 'inject', { chars: git.length, git: true })
 
-    if (notes.length) track($, 'prompt-shaper', 'inject', { chars: notes.join('\n').length, shorthand: used.length, git: notes.some(n => n.startsWith('Git now')) })
+    return next({ ...e, context: [...(e.context ?? []), git] })
+  })
 
-    return notes.length ? next({ ...e, context: [...(e.context ?? []), notes.join('\n')] }) : next(e)
+  // The note's outcome: Claude reading git state itself. Main loop only, as subagents never get the note.
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    count($, 'tool.call')
+    if (e.agentId === undefined && GIT_CHECK.test(e.input.command ?? '')) track($, 'prompt-shaper', 'gitcheck', { noted: lastGit !== undefined })
+
+    return next(e)
   })
 
   on('prompt.compose', async ($, e, next) => {

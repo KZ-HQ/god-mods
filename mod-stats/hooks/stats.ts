@@ -39,8 +39,11 @@ function line(mod: string, rows: Row[]): string {
 
       return `${shown} suggestion sets, ${of('clicked').length} clicked (${pct(of('clicked').length, shown)}) · Haiku ${usd(sum('shown', 'usd'))}`
     }
-    case 'prompt-shaper':
-      return `${of('inject').length} prompts got notes (~${k(sum('inject', 'chars') / 4)} tokens added) · toolchain in ${of('toolchain').length} sessions (~${k(sum('toolchain', 'chars') / 4)} tokens each time)`
+    case 'prompt-shaper': {
+      const sessions = of('toolchain').length
+      const checks = of('gitcheck')
+      return `${of('inject').length} git notes (~${k(sum('inject', 'chars') / 4)} tokens added) · toolchain in ${sessions} sessions (~${k(sessions ? sum('toolchain', 'chars') / 4 / sessions : 0)} tokens each) · Claude checked git itself ${checks.length}×, ${checks.filter(r => r.noted === true).length} after a note`
+    }
     case 'test-on-edit':
       return `${of('run').length} runs, ${of('run').filter(r => num(r.failed) > 0).length} with failures · ${of('delivered').length} failure notes to Claude (~${k(sum('delivered', 'chars') / 4)} tokens)`
     case 'context-gauge': {

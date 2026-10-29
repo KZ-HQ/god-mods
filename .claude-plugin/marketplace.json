@@ -13,8 +13,8 @@
     {
       "name": "prompt-shaper",
       "source": "./prompt-shaper",
-      "description": "Expands your shorthand and attaches git state to each prompt; adds a stable project-toolchain note to the system prompt",
-      "version": "0.3.1"
+      "description": "Attaches git state to a prompt when it changed, and adds a stable project-toolchain note to the system prompt",
+      "version": "0.4.0"
     },
     {
       "name": "long-turn-notify",
@@ -50,7 +50,7 @@
       "name": "mod-stats",
       "source": "./mod-stats",
       "description": "/mod-stats [days] [here]: what each mod did, cost and saved, active/stale/dormant, hook time and faults; watches the other mods' hooks for faults",
-      "version": "0.6.0"
+      "version": "0.6.1"
     }
   ],
   "description": "Claude Code mods by KeithZhu"

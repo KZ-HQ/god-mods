@@ -1,64 +1,28 @@
-import { describe, expect, mock, test } from 'claude-code/testing'
+import { describe, expect, test } from 'claude-code/testing'
+import type { On } from 'claude-code'
 
-describe('prompt-shaper', () => {
-  test('attaches the meaning of shorthand the prompt uses, and leaves the text alone', async ($, on) => {
-    mock.store(on, { shorthand: { app: 'the my-app project', cp: 'the other-app project' } })
-    let seen: readonly string[] | undefined
-    let text = ''
-    on('prompt.submit', (_$, e) => {
-      seen = e.context
-      text = e.text
+// git status answers with the given text; metrics rows are captured
+function engine(on: On, git: () => string) {
+  const rows: Record<string, unknown>[] = []
+  on('clock.now', () => ({ value: 0 }))
+  on('session.cwd', () => ({ value: '/r' }))
+  on('process.run', (_$, e) => {
+    if (e.argv[0] === '/bin/sh' && e.argv[4]) rows.push(JSON.parse(e.argv[4]))
 
-      return { text: e.text, context: e.context }
-    })
-    await $.prompt.submit({ text: 'fix the app login bug', wait: false, origin: { kind: 'composer' } })
-    expect(text).toBe('fix the app login bug')
-    expect(seen?.join('\n')).toMatch(/"app" = the my-app project/)
-    expect(seen?.join('\n') ?? '').not.toMatch(/other-app/)
+    return { value: { exitCode: 0, stdout: e.argv[0] === 'git' ? git() : '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
 
-  test('ignores prompts the person did not type', async ($, on) => {
-    mock.store(on, { shorthand: { app: 'the my-app project' } })
-    let seen: readonly string[] | undefined = ['unset']
-    on('prompt.submit', (_$, e) => {
-      seen = e.context
+  return rows
+}
 
-      return { text: e.text }
-    })
-    await $.prompt.submit({ text: 'app report', wait: false, origin: { kind: 'scheduled-trigger' } })
-    expect(seen).toBeUndefined()
-  })
-})
-
-describe('/shorthand', () => {
-  test('add, list and remove terms; a removed term stops expanding', async ($, on) => {
-    mock.store(on)
-    let seen: readonly string[] | undefined
-    on('prompt.submit', (_$, e) => {
-      seen = e.context
-
-      return { text: e.text }
-    })
-    const run = (args: string) => $.command.run({ command: 'shorthand', args }).then(r => r.text)
-    expect(await run('')).toMatch(/^No shorthand yet/)
-    expect(await run('add kz = the KZ-HQ org')).toBe('Shorthand saved: kz = the KZ-HQ org')
-    expect(await run('')).toBe('Shorthand:\n  kz = the KZ-HQ org')
-    await $.prompt.submit({ text: 'list kz repos', wait: false, origin: { kind: 'composer' } })
-    expect(seen?.join('\n')).toMatch(/"kz" = the KZ-HQ org/)
-
-    expect(await run('rm kz')).toBe('Shorthand removed: kz')
-    await $.prompt.submit({ text: 'list kz repos', wait: false, origin: { kind: 'composer' } })
-    expect(seen?.join('\n') ?? '').not.toMatch(/KZ-HQ/)
-  })
-})
+const settle = async () => {
+  for (let i = 0; i < 20; i++) await Promise.resolve()
+}
 
 describe('git state', () => {
   test('attaches git state only when it changed since the last prompt', async ($, on) => {
-    mock.store(on)
     let status = '## main\n M src/a.ts\n'
-    on('process.run', (_$, e) => ({
-      value: { exitCode: 0, stdout: e.argv[0] === 'git' ? status : '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
-    }))
+    engine(on, () => status)
     const contexts: (string | undefined)[] = []
     on('prompt.submit', (_$, e) => {
       contexts.push(e.context?.join('\n'))
@@ -73,5 +37,46 @@ describe('git state', () => {
     expect(contexts[0]).toBe('Git now: main; 1 changed: M src/a.ts.')
     expect(contexts[1]).toBeUndefined()
     expect(contexts[2]).toBe('Git now: main; working tree clean.')
+  })
+
+  test('leaves the prompt text alone', async ($, on) => {
+    engine(on, () => '## main\n')
+    let text = ''
+    on('prompt.submit', (_$, e) => {
+      text = e.text
+
+      return { text: e.text }
+    })
+    await $.prompt.submit({ text: 'fix the app login bug', wait: false, origin: { kind: 'composer' } })
+    expect(text).toBe('fix the app login bug')
+  })
+
+  test('ignores prompts the person did not type', async ($, on) => {
+    engine(on, () => '## main\n')
+    let seen: readonly string[] | undefined = ['unset']
+    on('prompt.submit', (_$, e) => {
+      seen = e.context
+
+      return { text: e.text }
+    })
+    await $.prompt.submit({ text: 'app report', wait: false, origin: { kind: 'scheduled-trigger' } })
+    expect(seen).toBeUndefined()
+  })
+})
+
+describe('outcome', () => {
+  test("records Claude's own git checks in the main loop, and whether a note was already given", async ($, on) => {
+    const rows = engine(on, () => '## main\n')
+    on('prompt.submit', (_$, e) => ({ text: e.text }))
+    on('tool.call', () => ({ result: 'ok' }) as never)
+    const bash = (command: string, agentId?: string) => $.tool.call({ tool: 'Bash', input: { command }, ...(agentId ? { agentId } : {}) } as never)
+    await bash('git status --short')
+    await $.prompt.submit({ text: 'go on', wait: false, origin: { kind: 'composer' } })
+    await bash('cd /r && git branch --show-current')
+    await bash('git -C /r status')
+    await bash('git log --oneline -3')
+    await bash('git status', 'agent-1')
+    await settle()
+    expect(rows.filter(r => r.event === 'gitcheck').map(r => r.noted)).toEqual([false, true, true])
   })
 })
