@@ -17,6 +17,7 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 
 | Mod | What it does |
 | --- | --- |
+| compact-carry | After a compaction, appends a short note (under ~400 tokens): the branch, the last request (first 200 chars), open todos and up to 12 files recently read or edited. Records the note's size and how many carried files Claude re-read in the 5 turns after, so `/mod-stats` shows whether it helps |
 | context-gauge | Band above the prompt: context fill, last turn's cost, session cost plus this session's subagent cost (`+ agents $…`, a list-price estimate from subagent transcripts), and rate limits. In the last 10 minutes of the 1h prompt cache it counts down, and once lapsed it shows what the next message pays to re-write it; `/gauge` toggles it |
 | long-turn-notify | macOS notification when a long turn finishes, a turn dies on an API error, or Claude needs your input, in terminal sessions; records failed tool calls and API errors (kinds only) |
 | merge-gate | Holds `gh pr merge` until CI passes on the PR head; `/gate` runs the project's CI steps locally |
