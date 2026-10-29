@@ -299,6 +299,9 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
+    work.tests = { runs: 0, pass: 0, fail: 0 }
+    work.added = 0
+    work.removed = 0
     await $.command.register({ name: 'gate', description: "Run the project's CI steps locally (no Claude turn); /gate list shows them" })
     await $.command.register({ name: 'prnote', description: 'Provenance note on PRs Claude creates: /prnote off | on' })
 
@@ -338,7 +341,7 @@ export const register: Register = on => {
         work.tests.runs++
         work.tests[r.isError ? 'fail' : 'pass']++
       }
-      if (create && !r.isError) await addNote($, r.text ?? '')
+      if (create && !r.isError) void addNote($, r.text ?? '')
 
       return r
     }

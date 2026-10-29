@@ -18,7 +18,7 @@ export function prUrl(output: string): string | undefined {
   return output.match(/https:\/\/[^\s/]+\/[^\s/]+\/[^\s/]+\/pull\/\d+/)?.[0]
 }
 
-const TEST = /(?:^|[;&|]\s*|\s)(?:npm (?:run )?test|pnpm (?:run )?test|yarn test|bun test|pytest|python3? -m pytest|cargo test|go test|make test|vitest|jest|node --test|claude plugin test|sh scripts\/ci\.sh)(?=\s|$|[;&|])/
+const TEST = /(?:^|[;&|])\s*(?:[A-Za-z_]\w*=\S*\s+)*(?:(?:npx|bunx|uv run|poetry run|pnpm exec|pnpm dlx)\s+)?(?:npm (?:run )?test|pnpm (?:run )?test|yarn test|bun test|pytest|python3? -m pytest|cargo test|go test|make test|vitest|jest|node --test|claude plugin test|sh scripts\/ci\.sh)(?=\s|$|[;&|])/
 
 export const isTestCommand = (command: string) => TEST.test(command.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""'))
 
