@@ -1,6 +1,6 @@
 {
   "name": "prompt-shaper",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Attaches git state to a prompt when it changed, and adds a stable project-toolchain note to the system prompt",
   "author": {
     "name": "KeithZhu"
