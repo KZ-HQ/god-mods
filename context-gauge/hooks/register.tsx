@@ -25,6 +25,9 @@ const hogs = atom({ plugin: 'context-gauge', key: 'hogs' } as const, {} as Recor
 
 // Tokens a tool result adds to context, estimated as chars / 4 (no per-result count is exposed)
 const MAX_HOGS = 300
+// A single file this big, or this share of context, earns a one-time toast
+const HOG_TOKENS = 30_000
+const HOG_SHARE = 0.2
 const estimate = (text: string) => Math.ceil(text.length / 4)
 
 // The file a tool result is charged to; shell output and other tools share a bucket
@@ -171,6 +174,8 @@ export const register: Register = on => {
   let turnStartedAt = 0
   // One toast per crossing; re-armed when context drops back (e.g. after a compact)
   let hasNagged = false
+  // Files already toasted as hogs; cleared with the tally
+  const warned = new Set<string>()
   // Redraws the band each minute while idle, so the cache countdown moves
   let tick: { cancel: () => void } | null = null
 
@@ -183,7 +188,7 @@ export const register: Register = on => {
     // /gauge's choice carries over to new sessions
     if ((await $.store.get(HIDDEN_KEY)) === true) await update($, isHidden, () => true)
     void scanAgents($)
-    await update($, hogs, () => ({}))
+    { warned.clear(); await update($, hogs, () => ({})) }
 
     return next(e)
   })
@@ -235,13 +240,21 @@ export const register: Register = on => {
     if (e.agentId !== undefined || typeof done.text !== 'string') return done
     const tokens = estimate(done.text)
     const key = hogKey(e as never)
-    await update($, hogs, h => {
+    const tally = await update($, hogs, h => {
       const out = { ...h, [key]: (h[key] ?? 0) + tokens }
       const keys = Object.keys(out)
       if (keys.length > MAX_HOGS) for (const drop of keys.sort((a, b) => out[a] - out[b]).slice(0, keys.length - MAX_HOGS)) delete out[drop]
 
       return out
     })
+    const ctxTokens = (await read($, snap))?.tokens ?? 0
+    const total = tally[key] ?? 0
+    const isHog = key !== 'bash' && key !== 'other' && (total >= HOG_TOKENS || (ctxTokens > 0 && total / ctxTokens >= HOG_SHARE))
+    if (isHog && !warned.has(key)) {
+      warned.add(key)
+      track($, 'context-gauge', 'hog', { tokens: total })
+      $.ui.toast(`context-gauge: ${key.split('/').pop()} holds ~${k(total)} tokens of context. /compact to drop it, or /hogs for the rest.`)
+    }
 
     return done
   })
@@ -250,7 +263,7 @@ export const register: Register = on => {
   on('session.compact', async ($, e, next) => {
     count($, 'session.compact')
     const done = await next(e)
-    if (e.agentId === undefined && e.trigger !== 'precompute' && done.skip === undefined) await update($, hogs, () => ({}))
+    if (e.agentId === undefined && e.trigger !== 'precompute' && done.skip === undefined) { warned.clear(); await update($, hogs, () => ({})) }
 
     return done
   })
