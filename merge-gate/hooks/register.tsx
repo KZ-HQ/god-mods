@@ -308,6 +308,16 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // /clear ends the session without a new session.start: the note counts start over
+  on('session.end', async ($, e, next) => {
+    count($, 'session.end')
+    work.tests = { runs: 0, pass: 0, fail: 0 }
+    work.added = 0
+    work.removed = 0
+
+    return next(e)
+  })
+
   on('command.run', { command: 'prnote' }, async ($, e) => {
     count($, 'command.run{prnote}')
     const arg = e.args.trim()

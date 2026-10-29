@@ -287,6 +287,17 @@ describe('PR provenance note', () => {
     expect(edits[0]).toMatch(/\+2 \/ -1 lines/)
   })
 
+  test('session end (/clear) resets the counters', async ($, on) => {
+    mock.store(on)
+    const edits = setup(on)
+    on('session.end', () => ({ sessionId: 's' }) as never)
+    await $.tool.call({ tool: 'Bash', command: 'npm test' })
+    await $.session.end({ reason: 'clear' } as never)
+    await $.tool.call({ tool: 'Bash', command: 'gh pr create' })
+    await new Promise(r => setTimeout(r, 50))
+    expect(edits[0]).toMatch(/Tests run: none this session/)
+  })
+
   test('adds nothing when gh pr create fails', async ($, on) => {
     mock.store(on)
     const edits = setup(on, { createFails: true })
