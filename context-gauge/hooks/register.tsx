@@ -21,6 +21,33 @@ const lastTurn = atom({ plugin: 'context-gauge', key: 'lastTurn' } as const, nul
 const isHidden = atom({ plugin: 'context-gauge', key: 'isHidden' } as const, false)
 const agentCost = atom({ plugin: 'context-gauge', key: 'agentCost' } as const, null)
 const idle = atom({ plugin: 'context-gauge', key: 'idle' } as const, null)
+// Band-visible biggest file; the full tally lives in module variables so tool calls don't touch the store
+const hogTop = atom({ plugin: 'context-gauge', key: 'hogTop' } as const, null)
+const tally = new Map<string, number>()
+const warned = new Set<string>()
+let ctxNow = 0
+const reset = async ($: EngineInterface) => {
+  tally.clear()
+  warned.clear()
+  await update($, hogTop, () => null)
+}
+
+// Tokens a tool result adds to context, estimated as chars / 4 (no per-result count is exposed)
+const MAX_HOGS = 300
+// A single file this big, or this share of context, earns a one-time toast
+const HOG_TOKENS = 30_000
+const HOG_SHARE = 0.2
+const estimate = (text: string) => Math.ceil(text.length / 4)
+
+// The file a tool result is charged to; shell output and other tools share a bucket
+const hogKey = (e: { tool: string; [key: string]: unknown }): string => {
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
+  if (e.tool === 'Read') return str(e.file_path) ?? 'other'
+  if (e.tool === 'Grep' || e.tool === 'Glob') return str(e.path) ?? '.'
+  if (e.tool === 'Bash') return 'bash'
+
+  return 'other'
+}
 
 const tier = (model: string) => Object.keys(PRICE).find(t => model.includes(t))
 
@@ -162,11 +189,21 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
     await $.command.register({ name: 'gauge', description: 'Show or hide the context gauge above the prompt' })
+    await $.command.register({ name: 'hogs', description: 'Top files by context their tool results loaded' })
     const usage = await $.session.usage()
     await update($, snap, () => toSnap(usage))
     // /gauge's choice carries over to new sessions
     if ((await $.store.get(HIDDEN_KEY)) === true) await update($, isHidden, () => true)
     void scanAgents($)
+    await reset($)
+
+    return next(e)
+  })
+
+  // /clear ends the session without a new session.start
+  on('session.end', async ($, e, next) => {
+    count($, 'session.end')
+    await reset($)
 
     return next(e)
   })
@@ -174,6 +211,7 @@ export const register: Register = on => {
   on('session.measure', async ($, e, next) => {
     count($, 'session.measure')
     const s = toSnap(e)
+    ctxNow = s.tokens ?? 0
     await update($, snap, () => s)
     const big = (s.tokens ?? 0) >= NAG_TOKENS
     if (big && !hasNagged) track($, 'context-gauge', 'nag', { tokens: s.tokens })
@@ -211,6 +249,51 @@ export const register: Register = on => {
     return done
   })
 
+  on('tool.call', async ($, e, next) => {
+    count($, 'tool.call')
+    const done = await next(e)
+    // A subagent's results stay in its own context
+    if (e.agentId !== undefined || typeof done.text !== 'string') return done
+    const tokens = estimate(done.text)
+    const key = hogKey(e as never)
+    const total = (tally.get(key) ?? 0) + tokens
+    tally.set(key, total)
+    if (tally.size > MAX_HOGS) for (const [drop] of [...tally].sort((x, y) => x[1] - y[1]).slice(0, tally.size - MAX_HOGS)) tally.delete(drop)
+    // Only a real file (Read) toasts; Grep/Glob directories and shell output do not
+    const isHog = e.tool === 'Read' && (total >= HOG_TOKENS || (ctxNow > 0 && total / ctxNow >= HOG_SHARE))
+    if (isHog && !warned.has(key)) {
+      warned.add(key)
+      track($, 'context-gauge', 'hog', { tokens: total })
+      $.ui.toast(`context-gauge: ${key.split('/').pop()} holds ~${k(total)} tokens of context. /compact to drop it, or /hogs for the rest.`)
+    }
+    const [top, topTokens] = [...tally].filter(([f]) => f !== 'other').sort((x, y) => y[1] - x[1])[0] ?? ['', 0]
+    const shown = topTokens >= 5000 ? { name: top.split('/').pop() ?? top, tokens: Math.round(topTokens / 1000) * 1000 } : null
+    const old = await read($, hogTop)
+    if (old?.name !== shown?.name || old?.tokens !== shown?.tokens) await update($, hogTop, () => shown)
+
+    return done
+  })
+
+  // A real compaction replaces the loaded results, so the tally starts over
+  on('session.compact', async ($, e, next) => {
+    count($, 'session.compact')
+    const done = await next(e)
+    if (e.agentId === undefined && e.trigger !== 'precompute' && done.skip === undefined) { warned.clear(); await reset($) }
+
+    return done
+  })
+
+  on('command.run', { command: 'hogs' }, async $ => {
+    count($, 'command.run{hogs}')
+    const top = [...tally].sort((a, b) => b[1] - a[1]).slice(0, 10)
+    const ctxTokens = ctxNow
+    track($, 'context-gauge', 'hogs', { files: tally.size, shown: top.length, tokens: top.reduce((n, [, t]) => n + t, 0) })
+    if (!top.length) return { text: 'No tool results recorded yet this session.' }
+    const rows = top.map(([f, t]) => `${f}  ~${k(t)} tokens${ctxTokens ? `  ${Math.round((t / ctxTokens) * 100)}%` : ''}`)
+
+    return { text: ['Context hogs (tool results, ~chars/4):', ...rows].join('\n') }
+  })
+
   on('command.run', { command: 'gauge' }, async $ => {
     count($, 'command.run{gauge}')
     const hidden = await update($, isHidden, h => !h)
@@ -227,6 +310,7 @@ export const register: Register = on => {
     const turn = await read($, lastTurn)
     const agents = await read($, agentCost)
     const quiet = await read($, idle)
+    const top = await read($, hogTop)
     const left = quiet ? CACHE_TTL_MS - ((await $.clock.now()) - quiet.since) : Infinity
     const { Box, Text } = $.ui.resolve(e)
 
@@ -243,6 +327,7 @@ export const register: Register = on => {
     else if (left <= WARN_LEFT_MS) parts.push(`cache ${Math.ceil(left / 60_000)}m left`)
     if (turn) parts.push(`last turn ${usd(turn.usd)} · ${turn.seconds}s`)
     if (s.usd !== null) parts.push(`session ${usd(s.usd)}${agents?.agents ? ` + agents ${usd(agents.usd)}` : ''}`)
+    if (top) parts.push(`top ${top.name} ~${k(top.tokens)}`)
     if (s.fiveHour !== null) parts.push(`5h ${Math.round(s.fiveHour)}%`)
     if (s.weekly !== null) parts.push(`7d ${Math.round(s.weekly)}%`)
 
