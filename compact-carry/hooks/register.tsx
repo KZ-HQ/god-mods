@@ -142,9 +142,11 @@ export const register: Register = on => {
   todos = []
   watch = undefined
 
-  // A new session (start, /clear, resume) starts with nothing carried
-  on('session.start', async ($, e, next) => {
-    count($, 'session.start')
+  logLoaded(on)
+
+  // A session ending (exit, /clear) leaves nothing to carry into the next
+  on('session.end', async ($, e, next) => {
+    count($, 'session.end')
     files = []
     task = ''
     todos = []

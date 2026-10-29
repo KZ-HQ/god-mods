@@ -63,11 +63,11 @@ describe('carry', () => {
     expect(msgs.length).toBe(1)
   })
 
-  test('forgets earlier work on a new session (/clear)', async ($, on) => {
+  test('forgets earlier work on a /clear (session end)', async ($, on) => {
     engine(on)
-    on('session.start', (_$, e) => ({ cwd: e.cwd }))
+    on('session.end', (_$, e) => ({ sessionId: e.sessionId }) as never)
     await tool($, 'Read', { file_path: '/r/a.ts' })
-    await $.session.start({ cwd: '/r' } as never)
+    await $.session.end({ reason: 'clear', sessionId: 's' } as never)
     const msgs = await compact($)
     expect(msgs.length).toBe(1)
   })
