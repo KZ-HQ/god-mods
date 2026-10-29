@@ -15,6 +15,15 @@ describe('fake-green helpers', () => {
     expect(newDisablers("it.skip('a')", "it.skip('a')")).toEqual([])
   })
 
+  test('bare markers only, snapshots exempt, Go short-mode skips allowed', async () => {
+    expect(newDisablers('', 'model.fit(X, y)\nnet.xit(1)')).toEqual([])
+    expect(newDisablers('', "fit('a', f)")).toEqual(['only'])
+    expect(isTestPath('/r/__snapshots__/a.test.ts.snap')).toBe(false)
+    expect(isTestPath('/r/a.test.ts.snap')).toBe(false)
+    expect(newDisablers('', 'if testing.Short() {\n t.Skip("slow")\n}')).toEqual([])
+    expect(newDisablers('', 't.Skip("slow")')).toEqual(['skip'])
+  })
+
   test('counts test cases', async () => {
     expect(caseCount("it('a', f)\ntest('b', f)\ntest.each([1])('c', f)")).toBe(2)
     expect(caseCount('def test_a():\n  pass\ndef test_b():\n  pass')).toBe(2)
@@ -96,6 +105,14 @@ describe('hook', () => {
     expect(t.context()?.join('\n')).toMatch(/lost 1 test case/)
     await $.prompt.submit({ text: 'again', wait: false, origin: { kind: 'composer' } })
     expect(t.context()).toBeUndefined()
+  })
+
+  test('checks MultiEdit and replace_all', async ($, on) => {
+    engine(on, { [T]: "it('a', f)\nit('b', f)" })
+    const multi = await $.tool.call({ tool: 'MultiEdit', file_path: T, edits: [{ old_string: 'x', new_string: 'y' }, { old_string: "it('b'", new_string: "it.skip('b'" }] } as never)
+    expect(multi.deny).toMatch(/skip/)
+    const all = await $.tool.call({ tool: 'Edit', file_path: T, old_string: "it(", new_string: 'xit(', replace_all: true } as never)
+    expect(all.deny).toMatch(/skip/)
   })
 
   test('/test-on-edit off lets it through', async ($, on) => {

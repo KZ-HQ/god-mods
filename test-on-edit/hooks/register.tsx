@@ -172,18 +172,27 @@ async function fakeGreen($: EngineInterface, e: { tool: string; [k: string]: unk
 
     return `test-on-edit: refusing to delete test file${gone.length > 1 ? 's' : ''} ${gone.join(', ')}. ${WHY}`
   }
-  if (e.tool !== 'Edit' && e.tool !== 'Write') return undefined
+  if (e.tool !== 'Edit' && e.tool !== 'Write' && e.tool !== 'MultiEdit') return undefined
   const path = String(e.file_path)
   if (!isTestPath(path)) return undefined
-  const before = e.tool === 'Edit' ? String(e.old_string ?? '') : await $.fs.read(path).catch(() => '')
-  const after = e.tool === 'Edit' ? String(e.new_string ?? '') : String(e.content ?? '')
-  const kinds = newDisablers(before, after)
+  const current = await $.fs.read(path).catch(() => '')
+  const pairs: { before: string; after: string }[] = []
+  if (e.tool === 'Write') pairs.push({ before: current, after: String(e.content ?? '') })
+  else {
+    const edits = Array.isArray(e.edits) ? (e.edits as { old_string?: string; new_string?: string }[]) : [e as { old_string?: string; new_string?: string; replace_all?: boolean }]
+    for (const x of edits) {
+      const o = String(x.old_string ?? '')
+      const n = String(x.new_string ?? '')
+      pairs.push((x as { replace_all?: boolean }).replace_all || e.replace_all ? { before: current, after: o ? current.split(o).join(n) : current } : { before: o, after: n })
+    }
+  }
+  const kinds = [...new Set(pairs.flatMap(p => newDisablers(p.before, p.after)))]
   if (kinds.length > 0) {
     track($, 'test-on-edit', 'fake-green', { action: 'blocked', kind: kinds, tool: e.tool })
 
     return `test-on-edit: refusing to disable tests in ${path} (${kinds.join(', ')}). ${WHY}`
   }
-  const removed = caseCount(before) - caseCount(after)
+  const removed = pairs.reduce((n, p) => n + caseCount(p.before) - caseCount(p.after), 0)
   if (removed > 0) {
     track($, 'test-on-edit', 'fake-green', { action: 'flagged', kind: 'removed', cases: removed, tool: e.tool })
     flags.push(`test-on-edit: ${path} lost ${removed} test case${removed > 1 ? 's' : ''} in an edit last turn. If they were not obsolete, restore them and fix the code instead.`)
@@ -216,7 +225,7 @@ export const register: Register = on => {
       if (reason) return { deny: reason }
     }
     const ran = await next(e)
-    if (isOn && (e.tool === 'Edit' || e.tool === 'Write') && ran.deny === undefined && !ran.isError) edited.add(String(e.file_path))
+    if (isOn && (e.tool === 'Edit' || e.tool === 'Write' || e.tool === 'MultiEdit') && ran.deny === undefined && !ran.isError) edited.add(String(e.file_path))
 
     return ran
   })
