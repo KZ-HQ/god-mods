@@ -1,7 +1,7 @@
 {
   "name": "mod-stats",
-  "version": "0.5.5",
-  "description": "/mod-stats [days]: what each god-mods mod did, cost and saved, from ~/.claude/mods/metrics.jsonl",
+  "version": "0.6.0",
+  "description": "/mod-stats [days] [here]: what each mod did, cost and saved, active/stale/dormant, hook time and faults; watches the other mods' hooks for faults",
   "author": {
     "name": "KeithZhu"
   }

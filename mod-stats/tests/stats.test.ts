@@ -18,8 +18,8 @@ describe('stats', () => {
       JSON.stringify({ t: '2026-09-01T00:00:00Z', mod: 'secret-scrubber', event: 'masked' }),
     ].join('\n')
     const out = report(parse(text), NOW - 7 * 86_400_000, 7, undefined, ['merge-gate', 'some-mod'])
-    expect(out).toMatch(/next-steps: 2 suggestion sets, 1 clicked \(50%\)/)
-    expect(out).toMatch(/secret-scrubber: 1 outputs masked/)
+    expect(out).toMatch(/next-steps(?: \([^)]*\))?: 2 suggestion sets, 1 clicked \(50%\)/)
+    expect(out).toMatch(/secret-scrubber(?: \([^)]*\))?: 1 outputs masked/)
     expect(out).toMatch(/compact: 1 done \(460k tokens freed\)/)
     expect(out).toMatch(/No events: .*merge-gate/)
     expect(out).toMatch(/\(5 events\)/)
@@ -27,7 +27,7 @@ describe('stats', () => {
 
   test('filters to one project', async () => {
     const text = [L({ mod: 'secret-scrubber', event: 'masked' }), L({ mod: 'secret-scrubber', event: 'masked', project: 'other' })].join('\n')
-    expect(report(parse(text), 0, 7, 'other')).toMatch(/secret-scrubber: 1 outputs masked/)
+    expect(report(parse(text), 0, 7, 'other')).toMatch(/secret-scrubber(?: \([^)]*\))?: 1 outputs masked/)
   })
 
   test('v2 rows: loads and hook calls show beside outcomes, and a loaded mod with no outcomes is not quiet', async () => {
@@ -38,8 +38,8 @@ describe('stats', () => {
       L({ v: 2, mod: 'merge-gate', event: 'verdict', kind: 'pass' }),
     ].join('\n')
     const out = report(parse(text), 0, 7)
-    expect(out).toMatch(/some-mod: no outcomes · loaded 1× \(v0\.3\.0\), 4 hook calls/)
-    expect(out).toMatch(/merge-gate: 1 merges checked: 1 pass.* · loaded 1× \(v0\.2\.0\), 0 hook calls/)
+    expect(out).toMatch(/some-mod(?: \([^)]*\))?: no outcomes · loaded 1× \(v0\.3\.0\), 4 hook calls/)
+    expect(out).toMatch(/merge-gate(?: \([^)]*\))?: 1 merges checked: 1 pass.* · loaded 1× \(v0\.2\.0\), 0 hook calls/)
     expect(out).toMatch(/\(1 events\)/)
     expect(out).not.toMatch(/No events: .*some-mod/)
   })
@@ -55,7 +55,7 @@ describe('stats', () => {
     on('clock.now', () => ({ value: NOW }))
     const out = await $.command.run({ command: 'mod-stats', args: '' })
     expect(out.text).toMatch(/No events: brand-new-mod/)
-    expect(out.text).toMatch(/some-mod: no outcomes/)
+    expect(out.text).toMatch(/some-mod(?: \([^)]*\))?: no outcomes/)
   })
 
   test('/mod-stats still reports when the marketplace manifest is unreadable', async ($: any, on: any) => {
@@ -64,7 +64,7 @@ describe('stats', () => {
     on('process.run', () => ({ value: { exitCode: 0, stdout: L({ v: 2, mod: 'some-mod', event: 'loaded', ver: '1.0.0' }), stderr: '' } }))
     on('clock.now', () => ({ value: NOW }))
     const out = await $.command.run({ command: 'mod-stats', args: '' })
-    expect(out.text).toMatch(/some-mod: no outcomes/)
+    expect(out.text).toMatch(/some-mod(?: \([^)]*\))?: no outcomes/)
     expect(out.text).not.toMatch(/No events/)
   })
 
@@ -76,9 +76,9 @@ describe('stats', () => {
       L({ v: 2, mod: 'mod-faults', event: 'fault', plugin: 'some-mod', hookEvent: 'agent.spawn', outcome: 'expired', reasonKind: 'timeout' }),
     ].join('\n')
     const out = report(parse(text), 0, 7, undefined, ['danger-guard', 'some-mod', 'test-on-edit'])
-    expect(out).toMatch(/danger-guard: no outcomes · loaded 1× \(v0\.4\.2\), 0 hook calls · 2 faults/)
-    expect(out).toMatch(/some-mod: no outcomes · 1 fault$/m)
-    expect(out).toMatch(/mod-faults: 3 hook faults recorded across mods/)
+    expect(out).toMatch(/danger-guard(?: \([^)]*\))?: no outcomes · loaded 1× \(v0\.4\.2\), 0 hook calls · 2 faults/)
+    expect(out).toMatch(/some-mod(?: \([^)]*\))?: no outcomes · 1 fault$/m)
+    expect(out).toMatch(/mod-faults(?: \([^)]*\))?: 3 hook faults recorded across mods/)
     expect(out).toMatch(/No events: test-on-edit$/m)
   })
 
@@ -92,7 +92,7 @@ describe('stats', () => {
     ].join('\n')
     const rows = parse(text)
     expect(rows).toHaveLength(1)
-    expect(report(rows, 0, 7)).toMatch(/secret-scrubber: 1 outputs masked/)
+    expect(report(rows, 0, 7)).toMatch(/secret-scrubber(?: \([^)]*\))?: 1 outputs masked/)
   })
 
   test('/mod-stats with an empty log says nothing is recorded yet', async ($: any, on: any) => {
@@ -110,9 +110,47 @@ describe('stats', () => {
       at('2026-10-10T09:00:00Z', { mod: 'mod-faults', event: 'loaded', session: 's1', ver: '0.5.0' }),
       at('2026-10-10T09:00:01Z', { mod: 'mod-faults', event: 'blind', session: 's1', mods: ['context-gauge', 'danger-guard'], of: 16 }),
     ]
-    expect(report(parse(blind.join('\n')), 0, 7)).toMatch(/mod-faults: no outcomes · .* · can't see 2: context-gauge, danger-guard \(\/mod-faults\)/)
+    expect(report(parse(blind.join('\n')), 0, 7)).toMatch(/mod-faults(?: \([^)]*\))?: no outcomes · .* · can't see 2: context-gauge, danger-guard/)
     const fixed = [...blind, at('2026-10-10T10:00:00Z', { mod: 'mod-faults', event: 'loaded', session: 's2', ver: '0.5.0' })]
     expect(report(parse(fixed.join('\n')), 0, 7)).not.toMatch(/can't see/)
+  })
+})
+
+describe('health', () => {
+  const at = (t: string, o: object) => JSON.stringify({ t, project: 'my-app', v: 2, ...o })
+
+  test('labels mods active, stale or dormant, and names the dormant ones', async () => {
+    const text = [
+      at('2026-10-10T10:00:00Z', { mod: 'next-steps', event: 'shown', ok: true }),
+      at('2026-10-05T10:00:00Z', { mod: 'merge-gate', event: 'verdict', kind: 'pass' }),
+      at('2026-10-10T10:00:00Z', { mod: 'agent-spend', event: 'loaded', ver: '0.1.0' }),
+      at('2026-10-10T10:00:00Z', { mod: 'agent-spend', event: 'turn', hooks: { 'session.start': 1 } }),
+      at('2026-10-10T10:00:00Z', { mod: 'context-gauge', event: 'turn', hooks: { 'ui.render': 4 } }),
+    ].join('\n')
+    const out = report(parse(text), NOW - 7 * 86_400_000, 7)
+    expect(out).toMatch(/next-steps \(active\):/)
+    expect(out).toMatch(/context-gauge \(active\):/)
+    expect(out).toMatch(/merge-gate \(stale, last used 2026-10-05\):/)
+    expect(out).toMatch(/agent-spend \(dormant\):/)
+    expect(out).toMatch(/Dormant \(loaded, never used in 7 days\): agent-spend: candidates to remove/)
+  })
+
+  test('sums hook time per mod and flags a slow hook', async () => {
+    const text = [
+      L({ v: 2, mod: 'mod-stats', event: 'latency', mods: { 'next-steps': { calls: 4, ms: 40, max: 20, maxEvent: 'turn.complete' } } }),
+      L({ v: 2, mod: 'mod-stats', event: 'latency', mods: { 'next-steps': { calls: 6, ms: 2560, max: 2500, maxEvent: 'prompt.submit' } } }),
+      L({ v: 2, mod: 'next-steps', event: 'shown', ok: true }),
+    ].join('\n')
+    expect(report(parse(text), 0, 7)).toMatch(/next-steps .*· hooks avg 260ms, max 2500ms \(prompt\.submit\) SLOW/)
+  })
+
+  test("totals what mods added to Claude's context", async () => {
+    const text = [
+      L({ mod: 'prompt-shaper', event: 'inject', chars: 4000 }),
+      L({ mod: 'prompt-shaper', event: 'toolchain', chars: 400 }),
+      L({ mod: 'test-on-edit', event: 'delivered', chars: 800 }),
+    ].join('\n')
+    expect(report(parse(text), 0, 7)).toMatch(/Tokens added to Claude's context: prompt-shaper ~1k, test-on-edit ~200/)
   })
 })
 

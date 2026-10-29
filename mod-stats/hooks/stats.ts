@@ -56,6 +56,7 @@ function line(mod: string, rows: Row[]): string {
     case 'long-turn-notify':
       return `${of('notified').length} notifications (${where('notified', 'isError', true)} for errors)`
     case 'mod-faults':
+    case 'mod-stats':
       return `${of('fault').length} hook faults recorded across mods`
     default: {
       const counts = new Map<string, number>()
@@ -67,7 +68,52 @@ function line(mod: string, rows: Row[]): string {
 }
 
 // v2 rows the shared metrics block writes for every mod; everything else is an outcome row
-const TELEMETRY = new Set(['loaded', 'turn', 'blind'])
+const TELEMETRY = new Set(['loaded', 'turn', 'blind', 'latency'])
+// mod-stats took over mod-faults' watching; older rows carry the old name
+const WATCHER = new Set(['mod-stats', 'mod-faults'])
+// Outcome rows whose chars went into Claude's context, as notes or a system-prompt section
+const CONTEXT: Record<string, string[]> = { 'prompt-shaper': ['inject', 'toolchain'], 'test-on-edit': ['delivered'] }
+// Used within this many days: active; used earlier in the window: stale; loaded but never used: dormant
+const ACTIVE_DAYS = 3
+// A single hook call this slow (own time) makes the mod's line say so
+const SLOW_MS = 2000
+const DAY_MS = 86_400_000
+
+// When a mod last did something visible: an outcome row, a command run, or a drawing
+function lastUse(rows: Row[]): number | undefined {
+  const used = rows.filter(r =>
+    r.event === 'turn'
+      ? Object.keys((r.hooks ?? {}) as object).some(h => h.startsWith('command.run{') || h === 'ui.render')
+      : !TELEMETRY.has(r.event) && r.event !== 'fault',
+  )
+
+  return used.length ? Math.max(...used.map(r => Date.parse(r.t))) : undefined
+}
+
+function label(rows: Row[], nowMs: number): string {
+  const last = lastUse(rows)
+  if (last === undefined) return rows.some(r => r.event === 'loaded') ? 'dormant' : ''
+  if (nowMs - last <= ACTIVE_DAYS * DAY_MS) return 'active'
+
+  return `stale, last used ${new Date(last).toISOString().slice(0, 10)}`
+}
+
+// Summed from the watcher's per-turn latency rows: own hook time, next() taken out
+function latency(rows: Row[]): Map<string, { calls: number; ms: number; max: number; maxEvent: string }> {
+  const by = new Map<string, { calls: number; ms: number; max: number; maxEvent: string }>()
+  for (const r of rows) {
+    if (!WATCHER.has(r.mod) || r.event !== 'latency' || typeof r.mods !== 'object' || !r.mods) continue
+    for (const [mod, v] of Object.entries(r.mods as Record<string, Record<string, unknown>>)) {
+      const l = by.get(mod) ?? { calls: 0, ms: 0, max: 0, maxEvent: '' }
+      l.calls += num(v.calls)
+      l.ms += num(v.ms)
+      if (num(v.max) > l.max) Object.assign(l, { max: num(v.max), maxEvent: String(v.maxEvent ?? '') })
+      by.set(mod, l)
+    }
+  }
+
+  return by
+}
 
 function telemetry(rows: Row[]): string {
   const loads = rows.filter(r => r.event === 'loaded')
@@ -84,26 +130,38 @@ export function report(all: Row[], sinceMs: number, days: number, project?: stri
   const outcomes = rows.filter(r => !TELEMETRY.has(r.event))
   const names = [...new Set([...mods, ...rows.map(r => r.mod)])].sort()
   const out = [`Mod activity, last ${days} day${days === 1 ? '' : 's'}${project ? ` in ${project}` : ''} (${outcomes.length} events):`]
-  // mod-faults records each hook fault as its own row, naming the mod that faulted
+  // The watcher records each hook fault as its own row, naming the mod that faulted
   const faults = new Map<string, number>()
   for (const r of rows) {
-    if (r.mod !== 'mod-faults' || r.event !== 'fault' || typeof r.plugin !== 'string') continue
+    if (!WATCHER.has(r.mod) || r.event !== 'fault' || typeof r.plugin !== 'string') continue
     const of = r.plugin.split('@')[0]!
     faults.set(of, (faults.get(of) ?? 0) + 1)
   }
-  // mod-faults can't see mods above it in the chain; only its latest session's view counts
-  const latest = rows.filter(r => r.mod === 'mod-faults' && r.event === 'loaded').at(-1)
-  const blindRow = latest && rows.filter(r => r.mod === 'mod-faults' && r.event === 'blind' && r.session === latest.session).at(-1)
+  // The watcher can't see mods above it in the chain; only its latest session's view counts
+  const latest = rows.filter(r => WATCHER.has(r.mod) && r.event === 'loaded').at(-1)
+  const blindRow = latest && rows.filter(r => r.mod === latest.mod && r.event === 'blind' && r.session === latest.session).at(-1)
+  const nowMs = sinceMs + days * DAY_MS
+  const lat = latency(rows)
+  const dormant: string[] = []
+  const context: string[] = []
   const blindTo = Array.isArray(blindRow?.mods) ? (blindRow.mods as string[]) : []
   const quiet: string[] = []
   for (const mod of [...new Set([...names, ...faults.keys()])].sort()) {
     const mine = rows.filter(r => r.mod === mod)
     const acts = mine.filter(r => !TELEMETRY.has(r.event))
     const faulted = faults.get(mod) ? ` · ${faults.get(mod)} fault${faults.get(mod) === 1 ? '' : 's'}` : ''
-    const blindNote = mod === 'mod-faults' && blindTo.length ? ` · can't see ${blindTo.length}: ${blindTo.join(', ')} (/mod-faults)` : ''
+    const blindNote = mod === latest?.mod && blindTo.length ? ` · can't see ${blindTo.length}: ${blindTo.join(', ')}` : ''
+    const l = lat.get(mod)
+    const time = l?.calls ? ` · hooks avg ${Math.round(l.ms / l.calls)}ms, max ${l.max}ms (${l.maxEvent})${l.max >= SLOW_MS ? ' SLOW' : ''}` : ''
+    const tag = label(mine, nowMs)
+    if (tag === 'dormant') dormant.push(mod)
+    const chars = (CONTEXT[mod] ?? []).reduce((a, ev) => a + acts.filter(r => r.event === ev).reduce((b, r) => b + num(r.chars), 0), 0)
+    if (chars) context.push(`${mod} ~${k(chars / 4)}`)
     if (mine.length === 0 && !faulted) quiet.push(mod)
-    else out.push(`  ${mod}: ${acts.length ? line(mod, acts) : 'no outcomes'}${mine.length ? telemetry(mine) : ''}${faulted}${blindNote}`)
+    else out.push(`  ${mod}${tag ? ` (${tag})` : ''}: ${acts.length ? line(mod, acts) : 'no outcomes'}${mine.length ? telemetry(mine) : ''}${faulted}${time}${blindNote}`)
   }
+  if (dormant.length) out.push(`  Dormant (loaded, never used in ${days} day${days === 1 ? '' : 's'}): ${dormant.join(', ')}: candidates to remove`)
+  if (context.length) out.push(`  Tokens added to Claude's context: ${context.join(', ')}`)
   if (quiet.length) out.push(`  No events: ${quiet.join(', ')}`)
   out.push('Token figures for notes are estimates (4 characters per token); $ are list prices.')
 

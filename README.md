@@ -20,8 +20,7 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 | context-gauge | Band above the prompt: context fill, last turn's cost, session cost plus this session's subagent cost (`+ agents $…`, a list-price estimate from subagent transcripts), and rate limits; `/gauge` toggles it |
 | long-turn-notify | macOS notification when a long turn finishes or Claude needs your input, in terminal sessions |
 | merge-gate | Holds `gh pr merge` until CI passes on the PR head; `/gate` runs the project's CI steps locally |
-| mod-stats | `/mod-stats [days]`: what each mod did, cost and saved, and how often it faulted |
-| mod-faults | Passive: records any god-mod hook that fails, times out or is refused, and toasts at a mod's third fault in a session; `/mod-faults`. It sees only mods beneath it: put `mod-faults@god-mods` first in `enabledPlugins` (that order is the chain order) |
+| mod-stats | `/mod-stats [days] [here]`: what each mod did, cost and saved; labels each active, stale or dormant (loaded but never used: a removal candidate); hook time per mod; tokens mods added to context. Also watches the other mods' hooks and records any that fail, time out or are refused, toasting at a mod's third fault in a session. It sees only mods beneath it: put `mod-stats@god-mods` first in `enabledPlugins` |
 | next-steps | Suggests 2–3 likely next prompts after each turn; press 1/2/3 to draft one; `/next off` |
 | prompt-shaper | Expands your shorthand and attaches git state to each prompt; adds a project-toolchain note to the system prompt |
 | secret-scrubber | Masks API keys and tokens in tool output, and refuses to write them into source files |
@@ -29,17 +28,17 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 
 ## Plugin order
 
-Installed mods nest in the order of `enabledPlugins` in `~/.claude/settings.json`, first outermost; a plugin can't choose its place. mod-faults only sees faults in mods beneath it, so keep it first:
+Installed mods nest in the order of `enabledPlugins` in `~/.claude/settings.json`, first outermost; a plugin can't choose its place. mod-stats only sees faults and hook time in mods beneath it, so keep it first:
 
 ```json
 "enabledPlugins": {
-  "mod-faults@god-mods": true,
+  "mod-stats@god-mods": true,
   "context-gauge@god-mods": true,
   ...
 }
 ```
 
-Plugins installed later are appended, so they land beneath it. Reinstalling mod-faults moves it to the end again; its start-up toast and `/mod-faults` name any mods it can't see.
+Plugins installed later are appended, so they land beneath it. Reinstalling mod-stats moves it to the end again; its start-up toast and `/mod-stats` name any mods it can't see.
 
 ## Metrics
 
@@ -49,7 +48,7 @@ Every mod appends local JSON lines to `~/.claude/mods/metrics.jsonl`; nothing le
 - `turn`: once per turn, counting each hook's calls, e.g. `{"tool.call": 3, "command.run{goal}": 1}`
 - anything else: an outcome the mod recorded, e.g. merge-gate's `verdict`
 
-Rows hold counts, kinds and lengths only, never prompt, command or tool-input text. `/mod-stats` summarises them. mod-faults adds a `fault` row per failed hook, naming the mod and event; it no longer writes `~/.claude/logs/god-mods-faults.jsonl`, which can be deleted.
+Rows hold counts, kinds and lengths only, never prompt, command or tool-input text. `/mod-stats` summarises them. mod-stats adds a `fault` row per failed hook, naming the mod and event, and a `latency` row per turn with each mod's own hook time (rows from before 0.6.0 carry `mod: "mod-faults"`).
 
 ## Development
 

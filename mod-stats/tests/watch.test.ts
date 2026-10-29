@@ -49,12 +49,12 @@ test('reads the mod list from marketplace.json', { plugins: [{
   name: 'new-mod',
   register(on: any) { on('tool.call', async () => { throw new Error('boom') }) },
 }] }, async ($: any, on: any) => {
-  engine(on, ['new-mod', 'mod-faults'])
+  engine(on, ['new-mod', 'mod-stats', 'mod-faults'])
   await start($)
   await $.tool.call({ tool: 'Read', input: { file_path: '/x' } })
-  const out = await $.command.run({ command: 'mod-faults', args: '' })
-  expect(out.text).toContain('new-mod: 1')
-  expect(out.text).toContain('Mod list (1): /m/.claude-plugin/marketplace.json')
+  const out = await $.command.run({ command: 'mod-stats', args: '' })
+  expect(out.text).toContain('faults new-mod 1')
+  expect(out.text).toContain('of 1 mods (list: /m/.claude-plugin/marketplace.json)')
 })
 
 test('passes calls through and records a fault row in metrics, without the reason text', { plugins: [boom] }, async ($: any, on: any) => {
@@ -65,13 +65,12 @@ test('passes calls through and records a fault row in metrics, without the reaso
   await settle()
   expect(m.faults()).toHaveLength(1)
   const row = m.faults()[0]
-  expect(row).toMatchObject({ v: 2, mod: 'mod-faults', event: 'fault', plugin: 'danger-guard', hookEvent: 'tool.call' })
+  expect(row).toMatchObject({ v: 2, mod: 'mod-stats', event: 'fault', plugin: 'danger-guard', hookEvent: 'tool.call' })
   expect(typeof row.reasonKind).toBe('string')
   expect(JSON.stringify(row)).not.toContain(SECRET)
   expect(m.rows.some(r => r.event === 'loaded')).toBe(true)
-  const out = await $.command.run({ command: 'mod-faults', args: '' })
-  expect(out.text).toContain('danger-guard: 1')
-  expect(out.text).toContain('metrics.jsonl')
+  const out = await $.command.run({ command: 'mod-stats', args: '' })
+  expect(out.text).toContain('faults danger-guard 1')
 })
 
 test('toasts once, at the third fault from one mod', { plugins: [boom] }, async ($: any, on: any) => {
@@ -91,12 +90,12 @@ test('without a readable manifest, a plugin not installed from god-mods is not c
   await $.tool.call({ tool: 'Read', input: { file_path: '/x' } })
   await settle()
   expect(m.faults()).toHaveLength(0)
-  const out = await $.command.run({ command: 'mod-faults', args: '' })
-  expect(out.text).not.toContain('danger-guard: 1')
-  expect(out.text).toContain('Mod list (0): unavailable')
+  const out = await $.command.run({ command: 'mod-stats', args: '' })
+  expect(out.text).not.toContain('danger-guard 1')
+  expect(out.text).toContain('of 0 mods (list: unavailable')
 })
 
-// An inline plugin sits beneath mod-faults; one that hooks session.start is seen there
+// An inline plugin sits beneath mod-stats; one that hooks session.start is seen there
 const beneath = (name: string) => ({ name, register(on: any) { on('session.start', async ($: any, e: any, next: any) => next(e)) } })
 
 test('names the god-mods it cannot see, once, with the fix', { plugins: [beneath('seen-mod')] }, async ($: any, on: any) => {
@@ -107,7 +106,7 @@ test('names the god-mods it cannot see, once, with the fix', { plugins: [beneath
   expect(rows).toHaveLength(1)
   expect(rows[0]).toMatchObject({ mods: ['above-mod', 'also-above'], of: 3 })
   expect(m.toasts.filter(t => /can't see faults in 2 of 3/.test(t))).toHaveLength(1)
-  const out = (await $.command.run({ command: 'mod-faults', args: '' })).text
+  const out = (await $.command.run({ command: 'mod-stats', args: '' })).text
   expect(out).toContain('Not visible (above this mod, or not enabled): above-mod, also-above')
   expect(out).toContain('top of enabledPlugins')
 })
@@ -118,5 +117,22 @@ test('says nothing about blind spots when it sees every god-mod', { plugins: [be
   await settle()
   expect(m.rows.filter(r => r.event === 'blind')).toHaveLength(0)
   expect(m.toasts.filter(t => /can't see/.test(t))).toHaveLength(0)
-  expect((await $.command.run({ command: 'mod-faults', args: '' })).text).not.toContain('Not visible')
+  expect((await $.command.run({ command: 'mod-stats', args: '' })).text).not.toContain('Not visible')
+})
+
+test('records each mod\'s own hook time once per turn', { plugins: [{
+  name: 'slow-mod',
+  register(on: any) { on('tool.call', async ($: any, e: any, next: any) => next(e)) },
+}] }, async ($: any, on: any) => {
+  const m = engine(on, ['slow-mod'])
+  on('turn.complete', (_$: any, e: any) => ({ text: e.answer }))
+  await start($)
+  await $.tool.call({ tool: 'Read', input: { file_path: '/x' } })
+  await $.tool.call({ tool: 'Read', input: { file_path: '/x' } })
+  await $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  await settle()
+  const rows = m.rows.filter(r => r.event === 'latency')
+  expect(rows).toHaveLength(1)
+  expect(rows[0].mods['slow-mod']).toMatchObject({ calls: 2, maxEvent: 'tool.call' })
+  expect(typeof rows[0].mods['slow-mod'].max).toBe('number')
 })
