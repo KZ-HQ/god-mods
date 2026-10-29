@@ -1,6 +1,7 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import { buildNote, isPrCreate, isTestCommand, lineDelta, prUrl, withNote } from '../hooks/note.ts'
 import { MCP_MERGE, judge, mergeFromMcp, parseMerge, stepsFromMakefile, stepsFromWorkflow } from '../hooks/steps.ts'
 
 const CI = `name: CI
@@ -223,5 +224,80 @@ describe('/gate', () => {
     const ran = repo(on, { inRepo: false })
     expect((await $.command.run({ command: 'gate', args: '' })).text).toBe('gate: not in a git repository.')
     expect(ran).toEqual([])
+  })
+})
+
+describe('PR provenance note', () => {
+  test('helpers parse create commands, urls, tests and edits', async () => {
+    expect(isPrCreate('gh pr create --title T --body-file b.md')).toBe(true)
+    expect(isPrCreate('cd x && gh pr create -F -')).toBe(true)
+    expect(isPrCreate('gh pr create --web')).toBe(false)
+    expect(isPrCreate('echo "gh pr create"')).toBe(false)
+    expect(prUrl('Creating...\nhttps://github.com/o/r/pull/12\n')).toBe('https://github.com/o/r/pull/12')
+    expect(isTestCommand('cd app && npm test')).toBe(true)
+    expect(isTestCommand('git commit -m "run npm test"')).toBe(false)
+    expect(lineDelta('Edit', { old_string: 'a\nb', new_string: 'c' })).toEqual({ added: 1, removed: 2 })
+    expect(lineDelta('Write', { content: 'x\ny\nz' })).toEqual({ added: 3, removed: 0 })
+    expect(lineDelta('Read', {})).toBeUndefined()
+    const note = buildNote({ usd: '$1.20', tests: { runs: 2, pass: 1, fail: 1 }, added: 5, removed: 2 })
+    expect(note.split('\n')).toHaveLength(4)
+    expect(withNote('body', note)).toContain('Tests run: 2 (1 passed, 1 failed)')
+    expect(withNote(withNote('body', note), note)).toBe(withNote('body', note))
+  })
+
+  function setup(on: On, opts: { createFails?: boolean } = {}) {
+    const edits: string[] = []
+    const ok = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+    on('session.cwd', () => ({ value: '/repo' }))
+    on('ui.toast', () => ({ value: undefined }))
+    on('session.usage', () => ({ value: { cost: { usd: 2.5 } } }) as never)
+    on('process.run', (_$, e) => {
+      if (e.argv[3] === 'mod-metrics') return ok('')
+      if (e.argv[0] === '/bin/zsh') return ok('/opt/homebrew/bin/gh\n')
+      if (e.argv[2] === 'view') return ok('My body\n')
+      if (e.argv[2] === 'edit') edits.push(e.argv[5]!)
+
+      return ok('')
+    })
+    on('tool.call', { tool: 'Bash' }, (_$, e) => {
+      const create = e.command.startsWith('gh pr create')
+      if (opts.createFails && create) return { result: { stdout: '', stderr: 'boom', interrupted: false }, text: 'boom', isError: true } as never
+
+      return { result: { stdout: '', stderr: '', interrupted: false }, text: create ? 'https://github.com/o/r/pull/9\n' : '' } as never
+    })
+    on('tool.call', { tool: 'Edit' }, () => ({ result: {}, text: '' }) as never)
+
+    return edits
+  }
+
+  test('appends the note after gh pr create, counting tests and edits', async ($, on) => {
+    mock.store(on)
+    const edits = setup(on)
+    await $.tool.call({ tool: 'Bash', command: 'npm test' })
+    await $.tool.call({ tool: 'Edit', file_path: '/x', old_string: 'a', new_string: 'b\nc' } as never)
+    await $.tool.call({ tool: 'Bash', command: 'gh pr create --title T --body "hi"' })
+    expect(edits).toHaveLength(1)
+    expect(edits[0]).toMatch(/^My body\n\n---\n/)
+    expect(edits[0]).toMatch(/\$2\.50 so far/)
+    expect(edits[0]).toMatch(/Tests run: 1 \(1 passed, 0 failed\)/)
+    expect(edits[0]).toMatch(/\+2 \/ -1 lines/)
+  })
+
+  test('adds nothing when gh pr create fails', async ($, on) => {
+    mock.store(on)
+    const edits = setup(on, { createFails: true })
+    await $.tool.call({ tool: 'Bash', command: 'gh pr create' })
+    expect(edits).toHaveLength(0)
+  })
+
+  test('/prnote off stops the note', async ($, on) => {
+    mock.store(on)
+    const edits = setup(on)
+    expect((await $.command.run({ command: 'prnote', args: 'off' })).text).toBe('PR provenance note is off.')
+    await $.tool.call({ tool: 'Bash', command: 'gh pr create' })
+    expect(edits).toHaveLength(0)
+    expect((await $.command.run({ command: 'prnote', args: 'on' })).text).toBe('PR provenance note is on.')
+    await $.tool.call({ tool: 'Bash', command: 'gh pr create' })
+    expect(edits).toHaveLength(1)
   })
 })

@@ -2,7 +2,10 @@ import type { EngineInterface, On, Register } from 'claude-code'
 
 import { MCP_MERGE, judge, mergeFromMcp, parseMerge, stepsFromMakefile, stepsFromPackage, stepsFromWorkflow } from './steps.ts'
 import type { Check, Merge, Step } from './steps.ts'
+import { buildNote, isPrCreate, isTestCommand, lineDelta, prUrl, withNote } from './note.ts'
 
+const NOTE_OFF_KEY = 'prNoteOff'
+const work = { tests: { runs: 0, pass: 0, fail: 0 }, added: 0, removed: 0 }
 const STEP_TIMEOUT_MS = 10 * 60 * 1000
 const FAIL_TAIL_LINES = 25
 const MERGE = 'Merge anyway'
@@ -234,6 +237,13 @@ function count($: EngineInterface, event: string): void {
 }
 // </metrics>
 
+// <money: generated from shared/money.ts by shared/sync.sh>
+// US dollars: three decimals under $1, where cents hide the cost of a cheap call; two from $1
+function usd(n: number): string {
+  return `$${Math.abs(n) < 1 ? n.toFixed(3) : n.toFixed(2)}`
+}
+// </money>
+
 // <gh: generated from shared/gh.ts by shared/sync.sh>
 let ghPath: string | undefined
 
@@ -261,14 +271,46 @@ async function repoRoot($: EngineInterface, cwd?: string): Promise<string | unde
 }
 // </git>
 
+// After `gh pr create` succeeded: append the provenance note to the new PR's body. Runs gh without a shell, so
+// no body form (--body, -b, --body-file, -F, heredoc, none) can break; any failure only toasts.
+async function addNote($: EngineInterface, output: string): Promise<void> {
+  const url = prUrl(output)
+  if (!url || (await $.store.get(NOTE_OFF_KEY).catch(() => false)) === true) return
+  try {
+    const cost = (await $.session.usage()).cost?.usd
+    const bin = await findGh($)
+    const view = await $.process.run([bin, 'pr', 'view', url, '--json', 'body', '-q', '.body'], { timeoutMs: 30000 })
+    if (view.exitCode !== 0) throw new Error(view.stderr.trim().split('\n')[0] || `gh exited ${view.exitCode}`)
+    const note = buildNote({ usd: typeof cost === 'number' ? usd(cost) : undefined, ...work })
+    const current = view.stdout.replace(/\n$/, '')
+    const body = withNote(current, note)
+    if (body === current) return
+    const edit = await $.process.run([bin, 'pr', 'edit', url, '--body', body], { timeoutMs: 30000 })
+    if (edit.exitCode !== 0) throw new Error(edit.stderr.trim().split('\n')[0] || `gh exited ${edit.exitCode}`)
+    track($, 'merge-gate', 'pr-note', { ok: true, tests: work.tests.runs, edits: work.added + work.removed > 0 })
+  } catch (err) {
+    track($, 'merge-gate', 'pr-note', { ok: false })
+    $.ui.toast(`merge-gate: PR note not added (${message(err)})`)
+  }
+}
+
 export const register: Register = on => {
   logTurns(on)
 
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
     await $.command.register({ name: 'gate', description: "Run the project's CI steps locally (no Claude turn); /gate list shows them" })
+    await $.command.register({ name: 'prnote', description: 'Provenance note on PRs Claude creates: /prnote off | on' })
 
     return next(e)
+  })
+
+  on('command.run', { command: 'prnote' }, async ($, e) => {
+    count($, 'command.run{prnote}')
+    const arg = e.args.trim()
+    if (arg === 'off' || arg === 'on') await $.store.set(NOTE_OFF_KEY, arg === 'off')
+
+    return { text: `PR provenance note is ${(await $.store.get(NOTE_OFF_KEY).catch(() => false)) === true ? 'off' : 'on'}.` }
   })
 
   on('command.run', { command: 'gate' }, async ($, e) => {
@@ -287,7 +329,19 @@ export const register: Register = on => {
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     count($, 'tool.call{Bash}')
     const merge = parseMerge(e.command)
-    if (!merge) return next(e)
+    if (!merge) {
+      const testRun = isTestCommand(e.command)
+      const create = isPrCreate(e.command)
+      const r = await next(e)
+      if (r.deny !== undefined) return r
+      if (testRun) {
+        work.tests.runs++
+        work.tests[r.isError ? 'fail' : 'pass']++
+      }
+      if (create && !r.isError) await addNote($, r.text ?? '')
+
+      return r
+    }
     const deny = await gate($, merge)
 
     return deny === undefined ? next(e) : { deny }
@@ -296,6 +350,16 @@ export const register: Register = on => {
   // The same gate for a merge through an MCP server's tool
   on('tool.call', async ($, e, next) => {
     count($, 'tool.call')
+    if (e.tool === 'Edit' || e.tool === 'Write') {
+      const d = lineDelta(e.tool, e as unknown as Record<string, unknown>)
+      const r = await next(e)
+      if (d && r.deny === undefined && !r.isError) {
+        work.added += d.added
+        work.removed += d.removed
+      }
+
+      return r
+    }
     if (!MCP_MERGE.test(String(e.tool)) || !String(e.tool).startsWith('mcp__')) return next(e)
     const merge = mergeFromMcp(e as unknown as Record<string, unknown>)
     if (!merge) return next(e)
