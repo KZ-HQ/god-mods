@@ -12,6 +12,7 @@ const TOOLS = ['Read', 'Grep', 'Glob', 'Edit', 'Write']
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 const TEST_CMD = /(?:^|[\s/])(?:pytest|jest|vitest|mocha|rspec|phpunit|ctest)\b|\b(?:npm|pnpm|yarn|bun|deno|cargo|go|dotnet|mix|swift|gradle|mvn|make|just)\s+(?:run\s+)?test\b|\bplugin test\b|\btests?\.sh\b|\bci\.sh\b/
 const KEEP_SESSIONS = 300
+const ALERT_EVERY_MS = 7 * 24 * 3600 * 1000
 const CANDIDATE = { violated: 3, rate: 0.5, sessions: 2 }
 
 const NEG = String.raw`(?:never|don'?t|do not|avoid)`
@@ -187,12 +188,52 @@ async function save($: EngineInterface) {
   await $.store.set('sessions', Object.fromEntries(keep))
 }
 
+type Row = { id: string; label: string; f: number; v: number; n: number; flag: boolean }
+
+async function scorecard($: EngineInterface): Promise<{ rows: Row[]; sessions: Sessions }> {
+    const known = ((await $.store.get('rules')) as Record<string, Rule> | undefined) ?? {}
+    const sessions = ((await $.store.get('sessions')) as Sessions | undefined) ?? {}
+    const rows = Object.entries(known).map(([id, r]) => {
+      let f = 0, v = 0, bad = 0, n = 0
+      for (const s of Object.values(sessions)) {
+        const t = s.tally[id]
+        if (!t) continue
+        n++
+        f += t[0]
+        v += t[1]
+        if (t[1]) bad++
+      }
+      const label = r.kind === 'tests' ? 'run tests after edits' : r.kind === 'never' ? `never \`${r.b}\`` : `\`${r.a}\` not \`${r.b}\``
+      const flag = v >= CANDIDATE.violated && v / (f + v) >= CANDIDATE.rate && bad >= CANDIDATE.sessions
+
+      return { id, label, f, v, n, flag }
+    })
+
+  return { rows, sessions }
+}
+
+// Toasts each chronically ignored rule at session start, at most once a week per rule
+async function alert($: EngineInterface): Promise<void> {
+  const { rows } = await scorecard($)
+  const now = await $.clock.now()
+  const alerted = ((await $.store.get('alerted')) as Record<string, number> | undefined) ?? {}
+  const due = rows.filter(r => r.flag && now - (alerted[r.id] ?? -Infinity) >= ALERT_EVERY_MS)
+  if (!due.length) return
+  for (const r of due) alerted[r.id] = now
+  await $.store.set('alerted', alerted)
+  const worst = due.sort((x, y) => y.v - x.v)[0]
+  const more = due.length > 1 ? ` (+${due.length - 1} more)` : ''
+  $.ui.toast(`rule-score: Claude keeps breaking ${worst.label} (${worst.v} of ${worst.f + worst.v} checks)${more}; a hook could enforce it. /rules`)
+  track($, 'rule-score', 'alert', { rules: due.length })
+}
+
 export const register: Register = on => {
   st = { rules: [], tally: {}, bashCalls: 0, edited: false, tested: false }
 
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
     await $.command.register({ name: 'rules', description: 'Scorecard: how often Claude follows the checkable rules in CLAUDE.md' })
+    await alert($).catch(() => undefined)
 
     return next(e)
   })
@@ -214,7 +255,13 @@ export const register: Register = on => {
     for (const r of st.rules) kinds[r.kind]++
     track($, 'rule-score', 'rules', { files: files.length, ...kinds })
 
-    return result
+    // Remind Claude of the loaded rules it keeps breaking
+    const active = new Set(st.rules.map(ruleId))
+    const broken = (await scorecard($).catch(() => ({ rows: [] as Row[] }))).rows.filter(r => r.flag && active.has(r.id))
+    if (!broken.length) return result
+    const text = `rule-score: in past sessions you often broke these CLAUDE.md rules; follow them:\n- ${broken.map(r => r.label).join('\n- ')}`
+
+    return { ...result, blocks: [...result.blocks, { name: 'ruleScore', text }] }
   })
 
   on('tool.call', async ($, e, next) => {
@@ -261,23 +308,7 @@ export const register: Register = on => {
   on('command.run', { command: 'rules' }, async ($) => {
     count($, 'command.run{rules}')
     await save($).catch(() => undefined)
-    const known = ((await $.store.get('rules')) as Record<string, Rule> | undefined) ?? {}
-    const sessions = ((await $.store.get('sessions')) as Sessions | undefined) ?? {}
-    const rows = Object.entries(known).map(([id, r]) => {
-      let f = 0, v = 0, bad = 0, n = 0
-      for (const s of Object.values(sessions)) {
-        const t = s.tally[id]
-        if (!t) continue
-        n++
-        f += t[0]
-        v += t[1]
-        if (t[1]) bad++
-      }
-      const label = r.kind === 'tests' ? 'run tests after edits' : r.kind === 'never' ? `never \`${r.b}\`` : `\`${r.a}\` not \`${r.b}\``
-      const flag = v >= CANDIDATE.violated && v / (f + v) >= CANDIDATE.rate && bad >= CANDIDATE.sessions
-
-      return { label, f, v, n, flag }
-    })
+    const { rows, sessions } = await scorecard($)
     if (!rows.length) return { text: 'rule-score: no checkable rules found in the loaded CLAUDE.md files (it reads "use `a` not `b`", "never run `x`", "prefer the Read tool over `cat`", and "run tests after edits").' }
     rows.sort((x, y) => y.v - x.v || x.label.localeCompare(y.label))
     const lines = rows.map(r => {

@@ -11,6 +11,13 @@ const CLAUDE_MD = [
   '- Write good code, not `bad <code>`.',
 ].join('\n')
 
+const RM = 'never||rm -rf'
+const BROKEN = {
+  a: { t: 1, tally: { [RM]: [0, 2] } },
+  b: { t: 2, tally: { [RM]: [0, 1] } },
+  c: { t: 3, tally: { [RM]: [1, 0] } },
+}
+
 function engine(on: On, seed: Record<string, unknown> = {}) {
   const rows: Record<string, unknown>[] = []
   mock.store(on, seed)
@@ -89,6 +96,29 @@ describe('rule-score', () => {
     const text = ((await $.command.run({ command: 'rules', args: '' })) as { text: string }).text
     expect(text).toMatch(/^! +25% .*never `rm -rf`$/m)
     expect(text).toContain('chronically ignored')
+  })
+
+  test('toasts a chronically ignored rule at session start, once a week', async ($, on) => {
+    engine(on, { rules: { [RM]: { kind: 'never', b: 'rm -rf' } }, sessions: BROKEN })
+    const toasts: string[] = []
+    on('ui.toast', (_$, e) => {
+      toasts.push(e.text)
+
+      return { value: undefined } as never
+    })
+    on('session.start', (_$, e) => ({ cwd: e.cwd }) as never)
+    on('command.register', (_$, e) => ({ value: { command: e.name } }) as never)
+    await $.session.start({ cwd: '/r' } as never)
+    await $.session.start({ cwd: '/r' } as never)
+    expect(toasts.filter(t => t.includes('keeps breaking never `rm -rf`'))).toHaveLength(1)
+  })
+
+  test("tells Claude about a loaded rule it keeps breaking, and nothing when it doesn't", async ($, on) => {
+    engine(on, { rules: { [RM]: { kind: 'never', b: 'rm -rf' } }, sessions: BROKEN })
+    const out = await load($, '- Never run `rm -rf` here.')
+    expect(out.blocks.find(b => b.name === 'ruleScore')?.text).toContain('never `rm -rf`')
+    const quiet = await load($, '- Never run `curl`.')
+    expect(quiet.blocks).toHaveLength(0)
   })
 
   test('says what it reads when no rule is checkable', async ($, on) => {
