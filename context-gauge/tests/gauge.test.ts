@@ -139,6 +139,16 @@ describe('context hogs', () => {
     expect(toasts).toEqual([])
   })
 
+  test('ending the session (/clear) clears the tally', async ($, on) => {
+    engine(on)
+    on('tool.call', () => ({ result: {}, text: 'x'.repeat(400) }) as never)
+    on('session.end', (_$, e) => ({ sessionId: e.sessionId }) as never)
+    await $.tool.call({ tool: 'Read', file_path: '/r/a.ts' } as never)
+    await $.session.end({ sessionId: 's' } as never)
+    const out = JSON.stringify(await $.command.run({ command: 'hogs', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } }))
+    expect(out).toContain('No tool results')
+  })
+
   test('a compaction clears the tally', async ($, on) => {
     engine(on)
     on('tool.call', () => ({ result: {}, text: 'x'.repeat(400) }) as never)

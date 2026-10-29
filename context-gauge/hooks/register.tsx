@@ -200,6 +200,14 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // /clear ends the session without a new session.start
+  on('session.end', async ($, e, next) => {
+    count($, 'session.end')
+    await reset($)
+
+    return next(e)
+  })
+
   on('session.measure', async ($, e, next) => {
     count($, 'session.measure')
     const s = toSnap(e)
