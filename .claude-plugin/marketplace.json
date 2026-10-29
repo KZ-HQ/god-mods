@@ -5,6 +5,12 @@
   },
   "plugins": [
     {
+      "name": "compact-carry",
+      "source": "./compact-carry",
+      "description": "Carries recent files, the last request, open todos and the branch across a compaction as a short note",
+      "version": "0.1.0"
+    },
+    {
       "name": "context-gauge",
       "source": "./context-gauge",
       "description": "Band above the prompt: context fill, last turn's cost, session and subagent cost and rate limits; /gauge toggles it",

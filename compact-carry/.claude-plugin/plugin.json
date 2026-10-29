@@ -1,0 +1,8 @@
+{
+  "name": "compact-carry",
+  "version": "0.1.0",
+  "description": "Carries recent files, the last request, open todos and the branch across a compaction as a short note",
+  "author": {
+    "name": "KeithZhu"
+  }
+}
