@@ -37,8 +37,8 @@
     {
       "name": "test-on-edit",
       "source": "./test-on-edit",
-      "description": "When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt",
-      "version": "0.4.3"
+      "description": "When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt; refuses deleting or disabling tests (skip, xfail, only), flags dropped cases",
+      "version": "0.5.0"
     },
     {
       "name": "next-steps",

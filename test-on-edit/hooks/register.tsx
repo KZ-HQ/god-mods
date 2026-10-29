@@ -1,5 +1,6 @@
 import type { EngineInterface, On, Register } from 'claude-code'
 
+import { deletedTests, caseCount, isTestPath, newDisablers } from './fake-green.ts'
 import { candidates, parents, runner, summary } from './find.ts'
 
 const TIMEOUT_MS = 60_000
@@ -10,6 +11,8 @@ let isOn = true
 // Files edited this turn, and failures waiting for the next prompt
 const edited = new Set<string>()
 let pending: string | undefined
+// Fake-green flags (tests removed from a file), also waiting for the next prompt
+const flags: string[] = []
 
 async function project($: EngineInterface, root: string, rel: string) {
   let modRoot: string | undefined
@@ -158,6 +161,37 @@ async function repoRoot($: EngineInterface, cwd?: string): Promise<string | unde
 }
 // </git>
 
+const WHY = 'Fix the code under test instead, or ask the user to approve this (they can also run /test-on-edit off).'
+
+// A deny reason when the call deletes or disables tests; flags (to the next prompt) when it only drops cases
+async function fakeGreen($: EngineInterface, e: { tool: string; [k: string]: unknown }): Promise<string | undefined> {
+  if (e.tool === 'Bash') {
+    const gone = deletedTests(String(e.command ?? ''))
+    if (gone.length === 0) return undefined
+    track($, 'test-on-edit', 'fake-green', { action: 'blocked', kind: 'delete', files: gone.length, tool: 'Bash' })
+
+    return `test-on-edit: refusing to delete test file${gone.length > 1 ? 's' : ''} ${gone.join(', ')}. ${WHY}`
+  }
+  if (e.tool !== 'Edit' && e.tool !== 'Write') return undefined
+  const path = String(e.file_path)
+  if (!isTestPath(path)) return undefined
+  const before = e.tool === 'Edit' ? String(e.old_string ?? '') : await $.fs.read(path).catch(() => '')
+  const after = e.tool === 'Edit' ? String(e.new_string ?? '') : String(e.content ?? '')
+  const kinds = newDisablers(before, after)
+  if (kinds.length > 0) {
+    track($, 'test-on-edit', 'fake-green', { action: 'blocked', kind: kinds, tool: e.tool })
+
+    return `test-on-edit: refusing to disable tests in ${path} (${kinds.join(', ')}). ${WHY}`
+  }
+  const removed = caseCount(before) - caseCount(after)
+  if (removed > 0) {
+    track($, 'test-on-edit', 'fake-green', { action: 'flagged', kind: 'removed', cases: removed, tool: e.tool })
+    flags.push(`test-on-edit: ${path} lost ${removed} test case${removed > 1 ? 's' : ''} in an edit last turn. If they were not obsolete, restore them and fix the code instead.`)
+  }
+
+  return undefined
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
@@ -174,9 +208,13 @@ export const register: Register = on => {
     return { text: `${isOn ? 'on' : 'off for this session'}.` }
   })
 
-  // During a turn: only note which files changed
+  // Before a test is deleted or disabled: refuse. Otherwise only note which files changed
   on('tool.call', async ($, e, next) => {
     count($, 'tool.call')
+    if (isOn) {
+      const reason = await fakeGreen($, e)
+      if (reason) return { deny: reason }
+    }
     const ran = await next(e)
     if (isOn && (e.tool === 'Edit' || e.tool === 'Write') && ran.deny === undefined && !ran.isError) edited.add(String(e.file_path))
 
@@ -221,9 +259,10 @@ export const register: Register = on => {
   // Hand failures to Claude with the next prompt, once
   on('prompt.submit', async ($, e, next) => {
     count($, 'prompt.submit')
-    if (!pending || (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge')) return next(e)
-    const note = pending
+    if ((!pending && flags.length === 0) || (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge')) return next(e)
+    const note = [pending, ...flags].filter(Boolean).join('\n\n')
     pending = undefined
+    flags.length = 0
     $.ui.status(undefined)
     track($, 'test-on-edit', 'delivered', { chars: note.length })
 
