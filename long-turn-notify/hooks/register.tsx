@@ -146,6 +146,14 @@ let failureNotified = false
 export const register: Register = (on, options) => {
   logLoaded(on)
 
+  // A new turn starts clean, so a stale flag never suppresses a later failure
+  on('turn.start', async ($, e, next) => {
+    count($, 'turn.start')
+    failureNotified = false
+
+    return next(e)
+  })
+
   const threshold = Number(options.thresholdSeconds ?? 60)
 
   on('turn.complete', async ($, e, next) => {

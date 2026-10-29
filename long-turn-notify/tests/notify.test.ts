@@ -79,6 +79,17 @@ describe('failures', () => {
     expect(row).not.toContain('sk-123')
   })
 
+  test('an error turn without StopFailure does not suppress the next turn\'s notification', async ($, on) => {
+    const { ran } = engine(on, 'terminal')
+    on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+    on('classic.StopFailure', () => ({}))
+    await $.turn.complete(turn(30_000, { reason: 'error' }))
+    await $.turn.start({ turnId: 't2' } as never)
+    await $.classic.StopFailure({ error: 'overloaded' } as never)
+    expect(ran).toHaveLength(2)
+    expect(ran[1]).toContain('Failed: API overloaded')
+  })
+
   test('a failed tool call records name and duration, not input or error text', async ($, on) => {
     const { rows } = engine(on, 'terminal')
     on('classic.PostToolUseFailure', () => ({}))
