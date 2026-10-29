@@ -1,4 +1,4 @@
-import type { EngineInterface, On, Register } from 'claude-code'
+import type { EngineInterface, EventName, Next, On, Register } from 'claude-code'
 
 import { parse, report } from './stats.ts'
 
@@ -116,15 +116,106 @@ async function godModList($: EngineInterface): Promise<{ names: string[]; file: 
 }
 // </modlist>
 
-export const register: Register = on => {
-  logTurns(on)
+// Without the marketplace manifest, only plugins installed as <name>@god-mods count
+let GOD_MODS = new Set<string>()
+let listSource = 'unavailable (matching @god-mods installs only)'
+// This mod, and the mod-faults it replaced, watch the others
+const SELF = new Set(['mod-stats', 'mod-faults'])
 
+async function loadModList($: EngineInterface) {
+  const list = await godModList($)
+  if (!list) return
+  GOD_MODS = new Set(list.names.filter(n => !SELF.has(n)))
+  listSource = list.file
+}
+
+const nameOf = (plugin: string) => plugin.split('@')[0]!
+const isGodMod = (plugin: string) => !SELF.has(nameOf(plugin)) && (GOD_MODS.has(nameOf(plugin)) || plugin.endsWith('@god-mods'))
+
+const FAULTS = new Set(['skipped', 'kept', 'expired', 'caught', 'rejected'])
+// The third fault from one mod in a session toasts, once
+const ALERT_AT = 3
+const seen = new Set<string>()
+const faults = new Map<string, number>()
+// This turn's own hook time per mod, from next.trace's ms (time in next() taken out): flushed as one latency row
+const lat = new Map<string, { calls: number; ms: number; max: number; maxEvent: string }>()
+
+// One short lowercase leading word of the reason at most (e.g. "timeout"): reasons can quote tool input or
+// error text, which metrics rows never carry
+const reasonKind = (reason: string | undefined) => (reason ? (reason.match(/^[a-z][a-z-]{0,23}(?=[:\s(]|$)/)?.[0] ?? 'other') : 'none')
+
+function record($: EngineInterface, plugin: string, hookEvent: string, outcome: string, reason: string | undefined) {
+  const n = (faults.get(plugin) ?? 0) + 1
+  faults.set(plugin, n)
+  track($, 'mod-stats', 'fault', { plugin, hookEvent, outcome, reasonKind: reasonKind(reason) })
+  if (n === ALERT_AT) $.ui.toast(`mod-stats: ${plugin} has faulted ${n} times this session (/mod-stats)`)
+}
+
+async function watch<N extends EventName>($: EngineInterface, e: Parameters<Next<N>>[0], next: Next<N>) {
+  try {
+    return await next(e)
+  } finally {
+    try {
+      for (const t of next.trace) {
+        if (!isGodMod(t.plugin)) continue
+        const mod = nameOf(t.plugin)
+        seen.add(mod)
+        if (FAULTS.has(t.outcome) && !t.reason?.startsWith('bypassed')) record($, mod, t.event, t.outcome, t.reason)
+        if (t.reason?.startsWith('bypassed')) continue
+        const l = lat.get(mod) ?? { calls: 0, ms: 0, max: 0, maxEvent: '' }
+        l.calls += 1
+        l.ms += t.ms
+        if (t.ms > l.max) Object.assign(l, { max: t.ms, maxEvent: t.event })
+        lat.set(mod, l)
+      }
+    } catch {
+      // Never let bookkeeping break the event
+    }
+  }
+}
+
+function flushLatency($: EngineInterface) {
+  if (!lat.size) return
+  const mods = Object.fromEntries([...lat].map(([m, l]) => [m, { calls: l.calls, ms: Math.round(l.ms), max: Math.round(l.max), maxEvent: l.maxEvent }]))
+  lat.clear()
+  track($, 'mod-stats', 'latency', { mods })
+}
+
+// Every god-mod hooks session.start, so once it settles, a listed mod missing from the trace is
+// above this one in the chain (or not enabled): its faults and latency are invisible here.
+const blind = () => [...GOD_MODS].filter(m => !seen.has(m)).sort()
+const FIX = 'Move "mod-stats@god-mods" to the top of enabledPlugins in ~/.claude/settings.json: plugins nest in that order, first outermost.'
+
+function thisSession(): string {
+  const counted = [...faults].map(([p, n]) => `${p} ${n}`).join(', ') || 'none'
+  const unseen = blind()
+  const blindText = unseen.length ? `\nNot visible (above this mod, or not enabled): ${unseen.join(', ')}. ${FIX}` : ''
+
+  return `This session: faults ${counted}; watching ${seen.size} of ${GOD_MODS.size} mods (list: ${listSource})${blindText}`
+}
+
+export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
-    await $.command.register({ name: 'mod-stats', description: 'What each mod did, cost and saved: /mod-stats [days] [here]' })
+    await loadModList($)
+    await $.command.register({ name: 'mod-stats', description: 'What each mod did, cost and saved, its faults and hook time: /mod-stats [days] [here]' })
     void $.process.run(['/bin/sh', '-c', TRIM], { timeoutMs: 10_000 }).catch(() => undefined)
+    const started = await watch($, e, next)
+    const unseen = blind()
+    if (unseen.length) {
+      track($, 'mod-stats', 'blind', { mods: unseen, of: GOD_MODS.size })
+      $.ui.toast(`mod-stats: can't see faults in ${unseen.length} of ${GOD_MODS.size} god-mods above it in the chain (/mod-stats)`)
+    }
 
-    return next(e)
+    return started
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    count($, 'turn.complete')
+    const done = await watch($, e, next)
+    flushLatency($)
+
+    return done
   })
 
   on('command.run', { command: 'mod-stats' }, async ($, e) => {
@@ -134,10 +225,24 @@ export const register: Register = on => {
     const project = args.includes('here') ? (await $.session.cwd()).split('/').filter(Boolean).pop() : undefined
     const r = await $.process.run(['/bin/sh', '-c', READ], { timeoutMs: 10_000 })
     const rows = parse(r.stdout)
-    if (rows.length === 0) return { text: 'No mod events recorded yet. They collect in ~/.claude/mods/metrics.jsonl as the mods act.' }
+    if (rows.length === 0) return { text: `No mod events recorded yet. They collect in ~/.claude/mods/metrics.jsonl as the mods act.\n${thisSession()}` }
 
     const mods = (await godModList($))?.names ?? []
 
-    return { text: report(rows, (await $.clock.now()) - days * DAY_MS, days, project, mods) }
+    return { text: `${report(rows, (await $.clock.now()) - days * DAY_MS, days, project, mods)}\n${thisSession()}` }
   })
+
+  // coverage: observer — one watch() hook on every other event; tests drive it through tool.call
+  on('session.end', watch)
+  on('session.measure', watch)
+  on('session.append', watch)
+  on('turn.start', watch)
+  on('prompt.submit', watch)
+  on('prompt.compose', watch)
+  on('tool.call', watch)
+  on('tool.describe', watch)
+  on('agent.spawn', watch)
+  on('command.run', watch)
+  on('ui.render', watch)
+  on('ui.close', watch)
 }
