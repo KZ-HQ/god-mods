@@ -5,22 +5,28 @@
   },
   "plugins": [
     {
+      "name": "compact-carry",
+      "source": "./compact-carry",
+      "description": "Carries recent files, the last request, open todos and the branch across a compaction as a short note",
+      "version": "0.1.0"
+    },
+    {
       "name": "context-gauge",
       "source": "./context-gauge",
       "description": "Band above the prompt: context fill, last turn's cost, session and subagent cost and rate limits; /gauge toggles it",
-      "version": "0.8.0"
+      "version": "0.9.0"
     },
     {
       "name": "prompt-shaper",
       "source": "./prompt-shaper",
       "description": "Attaches git state to a prompt when it changed, and adds a stable project-toolchain note to the system prompt",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     {
       "name": "long-turn-notify",
       "source": "./long-turn-notify",
       "description": "macOS notification when a long turn finishes, or when Claude needs your input, in terminal sessions",
-      "version": "0.4.1"
+      "version": "0.5.0"
     },
     {
       "name": "merge-gate",
@@ -37,8 +43,8 @@
     {
       "name": "test-on-edit",
       "source": "./test-on-edit",
-      "description": "When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt",
-      "version": "0.4.3"
+      "description": "When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt; refuses deleting or disabling tests (skip, xfail, only), flags dropped cases",
+      "version": "0.5.0"
     },
     {
       "name": "next-steps",

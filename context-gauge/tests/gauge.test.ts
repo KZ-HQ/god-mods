@@ -98,6 +98,69 @@ describe('context-gauge band', () => {
   })
 })
 
+describe('context hogs', () => {
+  test('/hogs ranks files by result size and the band names the top one', async ($, on) => {
+    engine(on)
+    on('tool.call', (_$, e) => ({ result: {}, text: e.tool === 'Read' && e.file_path === '/r/big.ts' ? 'x'.repeat(40_000) : 'y'.repeat(400) }) as never)
+    const toasts: string[] = []
+    on('ui.toast', (_$, e) => {
+      toasts.push(e.text)
+
+      return { value: undefined }
+    })
+    await $.session.measure(measure(50))
+    await $.tool.call({ tool: 'Read', file_path: '/r/big.ts' } as never)
+    await $.tool.call({ tool: 'Read', file_path: '/r/big.ts' } as never)
+    await $.tool.call({ tool: 'Read', file_path: '/r/small.ts' } as never)
+    await $.tool.call({ tool: 'Bash', command: 'ls' } as never)
+    const run = () => $.command.run({ command: 'hogs', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } })
+    const out = JSON.stringify(await run())
+    expect(out).toMatch(/\/r\/big\.ts {2}~20k tokens {2}20%/)
+    expect(out.indexOf('big.ts')).toBeLessThan(out.indexOf('small.ts'))
+    expect(out).toContain('bash')
+    expect(toasts.length).toBe(1)
+    expect(toasts[0]).toMatch(/big\.ts holds ~10k|holds ~20k.*\/compact/)
+    const ui = await $.ui.mount({ plugin: 'context-gauge', surface: 'terminal', ...BAND })
+    expect(await ui.find({ type: 'Text', text: /top big\.ts ~20k/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('a huge Grep or Bash result does not toast', async ($, on) => {
+    engine(on)
+    on('tool.call', () => ({ result: {}, text: 'x'.repeat(200_000) }) as never)
+    const toasts: string[] = []
+    on('ui.toast', (_$, e) => {
+      toasts.push(e.text)
+
+      return { value: undefined }
+    })
+    await $.tool.call({ tool: 'Grep', pattern: 'a' } as never)
+    await $.tool.call({ tool: 'Bash', command: 'ls' } as never)
+    expect(toasts).toEqual([])
+  })
+
+  test('ending the session (/clear) clears the tally', async ($, on) => {
+    engine(on)
+    on('tool.call', () => ({ result: {}, text: 'x'.repeat(400) }) as never)
+    on('session.end', (_$, e) => ({ sessionId: e.sessionId }) as never)
+    await $.tool.call({ tool: 'Read', file_path: '/r/a.ts' } as never)
+    await $.session.end({ sessionId: 's' } as never)
+    const out = JSON.stringify(await $.command.run({ command: 'hogs', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } }))
+    expect(out).toContain('No tool results')
+  })
+
+  test('a compaction clears the tally', async ($, on) => {
+    engine(on)
+    on('tool.call', () => ({ result: {}, text: 'x'.repeat(400) }) as never)
+    const msgs = [{ role: 'user', text: 'summary', toolUses: [] }]
+    on('session.compact', () => ({ messages: msgs }) as never)
+    await $.tool.call({ tool: 'Read', file_path: '/r/a.ts' } as never)
+    await $.session.compact({ messages: msgs } as never)
+    const out = JSON.stringify(await $.command.run({ command: 'hogs', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } }))
+    expect(out).toContain('No tool results')
+  })
+})
+
 describe('metrics', () => {
   test('a failed write is toasted once, not swallowed', async ($, on) => {
     on('session.measure', (_$, e) => ({ changed: e.changed }))

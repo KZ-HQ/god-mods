@@ -177,7 +177,7 @@ export const register: Register = on => {
   // The note's outcome: Claude reading git state itself. Main loop only, as subagents never get the note.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     count($, 'tool.call')
-    if (e.agentId === undefined && GIT_CHECK.test(e.input.command ?? '')) track($, 'prompt-shaper', 'gitcheck', { noted: lastGit !== undefined })
+    if (e.agentId === undefined && GIT_CHECK.test(e.command ?? '')) track($, 'prompt-shaper', 'gitcheck', { noted: lastGit !== undefined })
 
     return next(e)
   })

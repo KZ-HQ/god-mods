@@ -17,14 +17,15 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 
 | Mod | What it does |
 | --- | --- |
-| context-gauge | Band above the prompt: context fill, last turn's cost, session cost plus this session's subagent cost (`+ agents $…`, a list-price estimate from subagent transcripts), and rate limits. In the last 10 minutes of the 1h prompt cache it counts down, and once lapsed it shows what the next message pays to re-write it; `/gauge` toggles it |
-| long-turn-notify | macOS notification when a long turn finishes or Claude needs your input, in terminal sessions |
+| compact-carry | After a compaction, appends a short note (under ~400 tokens): the branch, the last request (first 200 chars), open todos and up to 12 files recently read or edited. Records the note's size and how many carried files Claude re-read in the 5 turns after, so `/mod-stats` shows whether it helps |
+| context-gauge | Band above the prompt: context fill, last turn's cost, session cost plus this session's subagent cost (`+ agents $…`, a list-price estimate from subagent transcripts), and rate limits. In the last 10 minutes of the 1h prompt cache it counts down, and once lapsed it shows what the next message pays to re-write it; `/gauge` toggles it. Tallies tool-result size per file (~chars/4); the band names the biggest, a one-time toast fires when one file passes 30k tokens or 20% of context, and `/hogs` lists the top 10 |
+| long-turn-notify | macOS notification when a long turn finishes, a turn dies on an API error, or Claude needs your input, in terminal sessions; records failed tool calls and API errors (kinds only) |
 | merge-gate | Holds `gh pr merge` until CI passes on the PR head; `/gate` runs the project's CI steps locally. Appends a 3-line provenance note (session cost, test runs, edited lines) to PRs Claude opens with `gh pr create`; `/prnote off` disables it |
 | mod-stats | `/mod-stats [days] [here]`: what each mod did, cost and saved; labels each active, stale or dormant (loaded but never used: a removal candidate); hook time per mod; tokens mods added to context. Also watches the other mods' hooks and records any that fail, time out or are refused, toasting at a mod's third fault in a session. At session start it toasts any mod newly dormant for a week (secret-scrubber exempt) or with a hook call over 2s. It sees only mods beneath it: put `mod-stats@god-mods` first in `enabledPlugins` |
 | next-steps | Suggests 2–3 likely next prompts after each turn; press 1/2/3 to draft one; `/next off` |
 | prompt-shaper | Attaches git state to a prompt when it changed; adds a project-toolchain note to the system prompt. Records each time Claude runs `git status` itself, so `/mod-stats` shows whether the note saves those checks |
 | secret-scrubber | Masks API keys and tokens in tool output, and refuses to write them into source files |
-| test-on-edit | When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt |
+| test-on-edit | When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt; refuses deleting or disabling tests (skip, xfail, only), flags dropped cases |
 
 ## Plugin order
 
