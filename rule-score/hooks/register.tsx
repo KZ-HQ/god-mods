@@ -309,7 +309,7 @@ export const register: Register = on => {
     count($, 'command.run{rules}')
     await save($).catch(() => undefined)
     const { rows, sessions } = await scorecard($)
-    if (!rows.length) return { text: 'rule-score: no checkable rules found in the loaded CLAUDE.md files (it reads "use `a` not `b`", "never run `x`", "prefer the Read tool over `cat`", and "run tests after edits").' }
+    if (!rows.length) return { text: 'rule-score: no checkable rules found in the loaded CLAUDE.md files (it reads "use `a` instead of `b`", "never run `x`", "prefer the Read tool over `cat`", and "run tests after edits").' }
     rows.sort((x, y) => y.v - x.v || x.label.localeCompare(y.label))
     const lines = rows.map(r => {
       const rate = r.f + r.v ? `${Math.round((100 * r.f) / (r.f + r.v))}%` : '-'
