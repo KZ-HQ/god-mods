@@ -69,7 +69,7 @@ describe('outcome', () => {
     const rows = engine(on, () => '## main\n')
     on('prompt.submit', (_$, e) => ({ text: e.text }))
     on('tool.call', () => ({ result: 'ok' }) as never)
-    const bash = (command: string, agentId?: string) => $.tool.call({ tool: 'Bash', input: { command }, ...(agentId ? { agentId } : {}) } as never)
+    const bash = (command: string, agentId?: string) => $.tool.call({ tool: 'Bash', command, ...(agentId ? { agentId } : {}) } as never)
     await bash('git status --short')
     await $.prompt.submit({ text: 'go on', wait: false, origin: { kind: 'composer' } })
     await bash('cd /r && git branch --show-current')
