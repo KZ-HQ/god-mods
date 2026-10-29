@@ -90,6 +90,25 @@ describe('failures', () => {
     expect(ran[1]).toContain('Failed: API overloaded')
   })
 
+  test('a short error turn completing before StopFailure still notifies', async ($, on) => {
+    const { ran } = engine(on, 'terminal')
+    on('classic.StopFailure', () => ({}))
+    await $.turn.complete(turn(2_000, { reason: 'error' }))
+    await $.classic.StopFailure({ error: 'rate_limit' } as never)
+    expect(ran).toHaveLength(1)
+    expect(ran[0]).toContain('Failed: rate limit')
+  })
+
+  test('a subagent turn.start does not clear the flag', async ($, on) => {
+    const { ran } = engine(on, 'terminal')
+    on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+    on('classic.StopFailure', () => ({}))
+    await $.classic.StopFailure({ error: 'rate_limit' } as never)
+    await $.turn.start({ turnId: 'sub', agentId: 'a1', text: '' } as never)
+    await $.turn.complete(turn(30_000, { reason: 'error' }))
+    expect(ran).toHaveLength(1)
+  })
+
   test('a failed tool call records name and duration, not input or error text', async ($, on) => {
     const { rows } = engine(on, 'terminal')
     on('classic.PostToolUseFailure', () => ({}))

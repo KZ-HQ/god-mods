@@ -149,7 +149,7 @@ export const register: Register = (on, options) => {
   // A new turn starts clean, so a stale flag never suppresses a later failure
   on('turn.start', async ($, e, next) => {
     count($, 'turn.start')
-    failureNotified = false
+    if (e.agentId === undefined) failureNotified = false
 
     return next(e)
   })
@@ -168,8 +168,8 @@ export const register: Register = (on, options) => {
 
       return done
     }
-    if (e.reason === 'error') failureNotified = true
     if (seconds < (isError ? ERROR_MIN_SECONDS : threshold)) return done
+    if (e.reason === 'error') failureNotified = true
 
     const project = (await $.session.cwd()).split('/').filter(Boolean).pop() ?? 'Claude Code'
     const subtitle = `${isError ? 'Stopped with an error' : 'Finished'} after ${duration(e.durationMs)}`
