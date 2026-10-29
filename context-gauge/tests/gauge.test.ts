@@ -171,3 +171,38 @@ describe('agents', () => {
     expect(await ui.find({ type: 'Text', text: /session \$1\.50/ })).toBeDefined()
   })
 })
+
+describe('prompt cache', () => {
+  test('counts down the last 10 minutes, then prices the cold re-write', async ($, on) => {
+    on('session.measure', (_$, e) => ({ changed: e.changed }))
+    on('session.cwd', () => ({ value: '/r' }))
+    on('session.model', () => ({ value: 'claude-opus-5-5' }) as never)
+    on('process.run', () => ({ value: { exitCode: 0, stdout: '', stderr: '' } }) as never)
+    on('ui.render', { component: 'AbovePrompt' }, ($, e) => h($.ui.resolve(e).Box, {}) as ReturnType<typeof h> & object)
+    on('session.usage', () => ({ value: { cost: { usd: 1 } } }) as never)
+    const clock = mock.clock(on, { now: 0 })
+    on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+
+    await $.turn.start({ text: 'go', turnId: 't1' })
+    await $.turn.complete({ answer: 'done', durationMs: 0, isAborted: false, turnId: 't1', reason: 'answer' })
+    await $.session.measure(measure(50))
+    const band = async (text: RegExp) => {
+      const ui = await $.ui.mount({ plugin: 'context-gauge', surface: 'terminal', ...BAND })
+      const found = await ui.find({ type: 'Text', text })
+      await ui.unmount()
+
+      return found
+    }
+
+    expect(await band(/cache/)).toBeUndefined()
+    await clock.advance(55 * 60_000)
+    expect(await band(/cache 5m left/)).toBeDefined()
+    await clock.advance(6 * 60_000)
+    // 100k tokens at opus: 100k * (2 * $4 - $0.2) / 1M
+    expect(await band(/cache cold: next message re-writes 100k ≈ \$0\.780/)).toBeDefined()
+
+    await $.turn.start({ text: 'again', turnId: 't2' })
+    expect(await band(/cache/)).toBeUndefined()
+  })
+})

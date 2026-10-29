@@ -10,11 +10,26 @@ const BAR_CELLS = 10
 // Absolute size where every call re-reads enough cache to drain the 5h limit fast
 const NAG_TOKENS = 400_000
 const HIDDEN_KEY = 'hidden'
+// Prompt-cache lifetime of the main thread; the band counts down its last WARN_LEFT_MS
+const CACHE_TTL_MS = 60 * 60_000
+const WARN_LEFT_MS = 10 * 60_000
+// List price per million tokens, as in hooks/agents.py: input, cache read. A 1h cache write is 2x input
+const PRICE: Record<string, [number, number]> = { haiku: [0.1, 0.01], sonnet: [2, 0.2], opus: [4, 0.2] }
 
 const snap = atom({ plugin: 'context-gauge', key: 'snap' } as const, null)
 const lastTurn = atom({ plugin: 'context-gauge', key: 'lastTurn' } as const, null)
 const isHidden = atom({ plugin: 'context-gauge', key: 'isHidden' } as const, false)
 const agentCost = atom({ plugin: 'context-gauge', key: 'agentCost' } as const, null)
+const idle = atom({ plugin: 'context-gauge', key: 'idle' } as const, null)
+
+const tier = (model: string) => Object.keys(PRICE).find(t => model.includes(t))
+
+// What re-writing a lapsed cache costs over reading it warm
+const coldUsd = (tokens: number, model: string) => {
+  const p = PRICE[tier(model) ?? 'opus']
+
+  return (tokens * (2 * p[0] - p[1])) / 1e6
+}
 
 const toSnap = (u: Pick<SessionUsage, 'context' | 'rateLimits' | 'cost'>): GaugeSnap => ({
   percent: u.context.percent ?? null,
@@ -141,6 +156,8 @@ export const register: Register = on => {
   let turnStartedAt = 0
   // One toast per crossing; re-armed when context drops back (e.g. after a compact)
   let hasNagged = false
+  // Redraws the band each minute while idle, so the cache countdown moves
+  let tick: { cancel: () => void } | null = null
 
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
@@ -170,6 +187,9 @@ export const register: Register = on => {
     count($, 'turn.start')
     turnStartUsd = (await $.session.usage()).cost?.usd ?? 0
     turnStartedAt = await $.clock.now()
+    tick?.cancel()
+    tick = null
+    await update($, idle, () => null)
 
     return next(e)
   })
@@ -182,6 +202,10 @@ export const register: Register = on => {
     const nowUsd = (await $.session.usage()).cost?.usd ?? turnStartUsd
     const seconds = Math.round(((await $.clock.now()) - turnStartedAt) / 1000)
     await update($, lastTurn, () => ({ usd: Math.max(0, nowUsd - turnStartUsd), seconds }))
+    const model = await $.session.model().catch(() => '')
+    await update($, idle, () => ({ since: turnStartedAt + seconds * 1000, model }))
+    tick?.cancel()
+    tick = $.clock.every(60_000, () => $.ui.invalidate('ui.render'))
     void scanAgents($)
 
     return done
@@ -202,6 +226,8 @@ export const register: Register = on => {
 
     const turn = await read($, lastTurn)
     const agents = await read($, agentCost)
+    const quiet = await read($, idle)
+    const left = quiet ? CACHE_TTL_MS - ((await $.clock.now()) - quiet.since) : Infinity
     const { Box, Text } = $.ui.resolve(e)
 
     const pct = s.percent
@@ -213,6 +239,8 @@ export const register: Register = on => {
     const parts: string[] = []
     parts.push(pct === null ? 'ctx —' : `${pct}% · ${k(s.tokens ?? 0)}/${k(s.window)}`)
     if (isBig) parts.push('over 400k: /compact to save usage')
+    if (quiet && left <= 0 && s.tokens) parts.push(`cache cold: next message re-writes ${k(s.tokens)} ≈ ${usd(coldUsd(s.tokens, quiet.model))}`)
+    else if (left <= WARN_LEFT_MS) parts.push(`cache ${Math.ceil(left / 60_000)}m left`)
     if (turn) parts.push(`last turn ${usd(turn.usd)} · ${turn.seconds}s`)
     if (s.usd !== null) parts.push(`session ${usd(s.usd)}${agents?.agents ? ` + agents ${usd(agents.usd)}` : ''}`)
     if (s.fiveHour !== null) parts.push(`5h ${Math.round(s.fiveHour)}%`)

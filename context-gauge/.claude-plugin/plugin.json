@@ -1,6 +1,6 @@
 {
   "name": "context-gauge",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Band above the prompt: context fill, last turn's cost, session and subagent cost and rate limits; /gauge toggles it",
   "types": "./types/index.d.ts",
   "author": {
