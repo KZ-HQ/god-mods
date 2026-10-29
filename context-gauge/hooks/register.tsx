@@ -21,6 +21,21 @@ const lastTurn = atom({ plugin: 'context-gauge', key: 'lastTurn' } as const, nul
 const isHidden = atom({ plugin: 'context-gauge', key: 'isHidden' } as const, false)
 const agentCost = atom({ plugin: 'context-gauge', key: 'agentCost' } as const, null)
 const idle = atom({ plugin: 'context-gauge', key: 'idle' } as const, null)
+const hogs = atom({ plugin: 'context-gauge', key: 'hogs' } as const, {} as Record<string, number>)
+
+// Tokens a tool result adds to context, estimated as chars / 4 (no per-result count is exposed)
+const MAX_HOGS = 300
+const estimate = (text: string) => Math.ceil(text.length / 4)
+
+// The file a tool result is charged to; shell output and other tools share a bucket
+const hogKey = (e: { tool: string; [key: string]: unknown }): string => {
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
+  if (e.tool === 'Read') return str(e.file_path) ?? 'other'
+  if (e.tool === 'Grep' || e.tool === 'Glob') return str(e.path) ?? '.'
+  if (e.tool === 'Bash') return 'bash'
+
+  return 'other'
+}
 
 const tier = (model: string) => Object.keys(PRICE).find(t => model.includes(t))
 
@@ -162,11 +177,13 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     count($, 'session.start')
     await $.command.register({ name: 'gauge', description: 'Show or hide the context gauge above the prompt' })
+    await $.command.register({ name: 'hogs', description: 'Top files by context their tool results loaded' })
     const usage = await $.session.usage()
     await update($, snap, () => toSnap(usage))
     // /gauge's choice carries over to new sessions
     if ((await $.store.get(HIDDEN_KEY)) === true) await update($, isHidden, () => true)
     void scanAgents($)
+    await update($, hogs, () => ({}))
 
     return next(e)
   })
@@ -211,6 +228,45 @@ export const register: Register = on => {
     return done
   })
 
+  on('tool.call', async ($, e, next) => {
+    count($, 'tool.call')
+    const done = await next(e)
+    // A subagent's results stay in its own context
+    if (e.agentId !== undefined || typeof done.text !== 'string') return done
+    const tokens = estimate(done.text)
+    const key = hogKey(e as never)
+    await update($, hogs, h => {
+      const out = { ...h, [key]: (h[key] ?? 0) + tokens }
+      const keys = Object.keys(out)
+      if (keys.length > MAX_HOGS) for (const drop of keys.sort((a, b) => out[a] - out[b]).slice(0, keys.length - MAX_HOGS)) delete out[drop]
+
+      return out
+    })
+
+    return done
+  })
+
+  // A real compaction replaces the loaded results, so the tally starts over
+  on('session.compact', async ($, e, next) => {
+    count($, 'session.compact')
+    const done = await next(e)
+    if (e.agentId === undefined && e.trigger !== 'precompute' && done.skip === undefined) await update($, hogs, () => ({}))
+
+    return done
+  })
+
+  on('command.run', { command: 'hogs' }, async $ => {
+    count($, 'command.run{hogs}')
+    const h = await read($, hogs)
+    const top = Object.entries(h).sort((a, b) => b[1] - a[1]).slice(0, 10)
+    const ctxTokens = (await read($, snap))?.tokens ?? 0
+    track($, 'context-gauge', 'hogs', { files: Object.keys(h).length, shown: top.length, tokens: top.reduce((n, [, t]) => n + t, 0) })
+    if (!top.length) return { text: 'No tool results recorded yet this session.' }
+    const rows = top.map(([f, t]) => `${f}  ~${k(t)} tokens${ctxTokens ? `  ${Math.round((t / ctxTokens) * 100)}%` : ''}`)
+
+    return { text: ['Context hogs (tool results, ~chars/4):', ...rows].join('\n') }
+  })
+
   on('command.run', { command: 'gauge' }, async $ => {
     count($, 'command.run{gauge}')
     const hidden = await update($, isHidden, h => !h)
@@ -227,6 +283,7 @@ export const register: Register = on => {
     const turn = await read($, lastTurn)
     const agents = await read($, agentCost)
     const quiet = await read($, idle)
+    const top = Object.entries(await read($, hogs)).sort((a, b) => b[1] - a[1])[0]
     const left = quiet ? CACHE_TTL_MS - ((await $.clock.now()) - quiet.since) : Infinity
     const { Box, Text } = $.ui.resolve(e)
 
@@ -243,6 +300,7 @@ export const register: Register = on => {
     else if (left <= WARN_LEFT_MS) parts.push(`cache ${Math.ceil(left / 60_000)}m left`)
     if (turn) parts.push(`last turn ${usd(turn.usd)} · ${turn.seconds}s`)
     if (s.usd !== null) parts.push(`session ${usd(s.usd)}${agents?.agents ? ` + agents ${usd(agents.usd)}` : ''}`)
+    if (top && top[1] >= 5000) parts.push(`top ${top[0].split('/').pop()} ~${k(top[1])}`)
     if (s.fiveHour !== null) parts.push(`5h ${Math.round(s.fiveHour)}%`)
     if (s.weekly !== null) parts.push(`7d ${Math.round(s.weekly)}%`)
 

@@ -17,7 +17,7 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 
 | Mod | What it does |
 | --- | --- |
-| context-gauge | Band above the prompt: context fill, last turn's cost, session cost plus this session's subagent cost (`+ agents $…`, a list-price estimate from subagent transcripts), and rate limits. In the last 10 minutes of the 1h prompt cache it counts down, and once lapsed it shows what the next message pays to re-write it; `/gauge` toggles it |
+| context-gauge | Band above the prompt: context fill, last turn's cost, session cost plus this session's subagent cost (`+ agents $…`, a list-price estimate from subagent transcripts), and rate limits. In the last 10 minutes of the 1h prompt cache it counts down, and once lapsed it shows what the next message pays to re-write it; `/gauge` toggles it. Tallies tool-result size per file (~chars/4); `/hogs` lists the top 10, the band names the biggest |
 | long-turn-notify | macOS notification when a long turn finishes or Claude needs your input, in terminal sessions |
 | merge-gate | Holds `gh pr merge` until CI passes on the PR head; `/gate` runs the project's CI steps locally |
 | mod-stats | `/mod-stats [days] [here]`: what each mod did, cost and saved; labels each active, stale or dormant (loaded but never used: a removal candidate); hook time per mod; tokens mods added to context. Also watches the other mods' hooks and records any that fail, time out or are refused, toasting at a mod's third fault in a session. At session start it toasts any mod newly dormant for a week (secret-scrubber exempt) or with a hook call over 2s. It sees only mods beneath it: put `mod-stats@god-mods` first in `enabledPlugins` |
