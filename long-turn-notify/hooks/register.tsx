@@ -125,6 +125,24 @@ function firstLine(text: string, max = 90): string {
 // The reply's first line without markdown marks, for a notification
 const summaryLine = (text: string) => firstLine(text.replace(/[#*`>_]/g, ''), 180) || 'Done.'
 
+const KIND_WORDS: Record<string, string> = {
+  rate_limit: 'rate limit',
+  overloaded: 'API overloaded',
+  authentication_failed: 'authentication failed',
+  oauth_org_not_allowed: 'organization not allowed',
+  account_on_hold: 'account on hold',
+  verification_required: 'verification required',
+  billing_error: 'billing error',
+  invalid_request: 'invalid request',
+  model_not_found: 'model not found',
+  server_error: 'server error',
+  max_output_tokens: 'output limit reached',
+  cloud_credential_error: 'cloud credentials error',
+}
+
+// Set by whichever of StopFailure / an error turn.complete notifies first, so a dying turn notifies once
+let failureNotified = false
+
 export const register: Register = (on, options) => {
   logLoaded(on)
 
@@ -137,6 +155,12 @@ export const register: Register = (on, options) => {
 
     const seconds = e.durationMs / 1000
     const isError = e.reason === 'error' || e.reason === 'refusal'
+    if (e.reason === 'error' && failureNotified) {
+      failureNotified = false
+
+      return done
+    }
+    if (e.reason === 'error') failureNotified = true
     if (seconds < (isError ? ERROR_MIN_SECONDS : threshold)) return done
 
     const project = (await $.session.cwd()).split('/').filter(Boolean).pop() ?? 'Claude Code'
@@ -150,6 +174,35 @@ export const register: Register = (on, options) => {
     track($, 'long-turn-notify', 'notified', { seconds: Math.round(seconds), isError })
 
     return done
+  })
+
+  // The turn died on an API error: say so at once, whatever its length. Only the error kind is used, never its text
+  on('classic.StopFailure', async ($, e, next) => {
+    count($, 'classic.StopFailure')
+    const done = await next(e)
+    track($, 'long-turn-notify', 'api_error', { kind: e.error })
+    if (failureNotified) {
+      failureNotified = false
+
+      return done
+    }
+    failureNotified = true
+    const why = KIND_WORDS[e.error] ?? 'unknown error'
+    const project = (await $.session.cwd()).split('/').filter(Boolean).pop() ?? 'Claude Code'
+    const subtitle = `Failed: ${why}`
+    const surfaces = await $.session.surfaces()
+    if (!surfaces.includes('desktop')) await notify($, 'The turn ended on an API error. Check the session.', `Claude · ${project}`, subtitle)
+    $.ui.toast(subtitle)
+
+    return done
+  })
+
+  // A tool call failed or was interrupted: tool name, whether interrupted and how long it ran, never input or error text
+  on('classic.PostToolUseFailure', async ($, e, next) => {
+    count($, 'classic.PostToolUseFailure')
+    track($, 'long-turn-notify', 'tool_failure', { tool: e.tool_name, interrupted: e.is_interrupt === true, ms: e.duration_ms ?? null })
+
+    return next(e)
   })
 
   // Claude is blocked on you (a permission prompt, a question, idle input): the desktop app has its own banners
