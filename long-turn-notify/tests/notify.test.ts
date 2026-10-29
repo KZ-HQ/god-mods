@@ -6,12 +6,14 @@ const turn = (durationMs: number, extra: object = {}) =>
 
 function engine(on: On, surface: 'terminal' | 'desktop') {
   const ran: string[][] = []
+  const rows: string[] = []
   const toasts: string[] = []
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('session.cwd', () => ({ value: '/Users/me/other-app' }))
   on('session.surfaces', () => ({ value: [surface] }))
   on('clock.now', () => ({ value: 0 }))
   on('process.run', (_$, e) => {
+    if (e.argv[3] === 'mod-metrics') rows.push(String(e.argv[4]))
     if (e.argv[3] === 'mod-metrics') return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     ran.push([...e.argv])
 
@@ -23,7 +25,7 @@ function engine(on: On, surface: 'terminal' | 'desktop') {
     return { value: undefined }
   })
 
-  return { ran, toasts }
+  return { ran, toasts, rows }
 }
 
 describe('long-turn-notify', () => {
@@ -59,6 +61,62 @@ describe('long-turn-notify', () => {
     on('classic.Notification', () => ({}))
     await $.classic.Notification({ message: 'Claude is waiting for your input', notification_type: 'idle_prompt' })
     expect(ran).toHaveLength(0)
+  })
+})
+
+describe('failures', () => {
+  test('an API error notifies with the kind only, once, and records a row', async ($, on) => {
+    const { ran, toasts, rows } = engine(on, 'terminal')
+    on('classic.StopFailure', () => ({}))
+    await $.classic.StopFailure({ error: 'rate_limit', error_details: 'secret sk-123' } as never)
+    await $.turn.complete(turn(2_000, { reason: 'error' }))
+    for (let i = 0; i < 50; i++) await Promise.resolve()
+    expect(ran).toHaveLength(1)
+    expect(ran[0]).toContain('Failed: rate limit')
+    expect(toasts).toEqual(['Failed: rate limit'])
+    const row = rows.find(r => r.includes('api_error'))!
+    expect(JSON.parse(row).kind).toBe('rate_limit')
+    expect(row).not.toContain('sk-123')
+  })
+
+  test('an error turn without StopFailure does not suppress the next turn\'s notification', async ($, on) => {
+    const { ran } = engine(on, 'terminal')
+    on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+    on('classic.StopFailure', () => ({}))
+    await $.turn.complete(turn(30_000, { reason: 'error' }))
+    await $.turn.start({ turnId: 't2' } as never)
+    await $.classic.StopFailure({ error: 'overloaded' } as never)
+    expect(ran).toHaveLength(2)
+    expect(ran[1]).toContain('Failed: API overloaded')
+  })
+
+  test('a short error turn completing before StopFailure still notifies', async ($, on) => {
+    const { ran } = engine(on, 'terminal')
+    on('classic.StopFailure', () => ({}))
+    await $.turn.complete(turn(2_000, { reason: 'error' }))
+    await $.classic.StopFailure({ error: 'rate_limit' } as never)
+    expect(ran).toHaveLength(1)
+    expect(ran[0]).toContain('Failed: rate limit')
+  })
+
+  test('a subagent turn.start does not clear the flag', async ($, on) => {
+    const { ran } = engine(on, 'terminal')
+    on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+    on('classic.StopFailure', () => ({}))
+    await $.classic.StopFailure({ error: 'rate_limit' } as never)
+    await $.turn.start({ turnId: 'sub', agentId: 'a1', text: '' } as never)
+    await $.turn.complete(turn(30_000, { reason: 'error' }))
+    expect(ran).toHaveLength(1)
+  })
+
+  test('a failed tool call records name and duration, not input or error text', async ($, on) => {
+    const { rows } = engine(on, 'terminal')
+    on('classic.PostToolUseFailure', () => ({}))
+    await $.classic.PostToolUseFailure({ tool_name: 'Bash', tool_input: { command: 'echo sk-123' }, error: 'boom sk-123', is_interrupt: false, duration_ms: 40 } as never)
+    for (let i = 0; i < 50; i++) await Promise.resolve()
+    const row = rows.find(r => r.includes('tool_failure'))!
+    expect(JSON.parse(row)).toMatchObject({ tool: 'Bash', interrupted: false, ms: 40 })
+    expect(row).not.toContain('sk-123')
   })
 })
 
