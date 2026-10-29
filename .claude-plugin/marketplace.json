@@ -32,7 +32,7 @@
       "name": "merge-gate",
       "source": "./merge-gate",
       "description": "Holds gh pr merge until CI passes on the PR head; /gate runs the project CI steps locally without a Claude turn",
-      "version": "0.4.5"
+      "version": "0.5.0"
     },
     {
       "name": "secret-scrubber",
