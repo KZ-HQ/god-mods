@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Prints one JSON line per subagent run in the last N days, from ~/.claude/projects/*/*/subagents.
+"""Prints {"usd", "agents"}: what one session's subagents cost, from ~/.claude/projects/*/<session>/subagents.
 
-Usage counted once per message id; '<synthetic>' messages don't set the model. Prices are list, per million
+Usage: agents.py <session id>. Usage counted once per message id; '<synthetic>' messages don't set the model. Prices are list, per million
 tokens: input, cache read, cache write, output.
 """
-import glob, json, os, re, sys, time
+import glob, json, os, sys, time
 
 PRICE = {'haiku': (0.1, 0.01, 0.125, 0.5), 'sonnet': (2, 0.2, 2.5, 10), 'opus': (4, 0.2, 5, 20)}
 
@@ -37,19 +37,12 @@ def agent(path):
     return model, tokens, usd, cwd
 
 
-cutoff = time.time() - float(sys.argv[1] if len(sys.argv) > 1 else 7) * 86400
-for f in glob.glob(os.path.expanduser('~/.claude/projects/*/*/subagents/agent-*.jsonl')):
+usd, agents = 0.0, 0
+for f in glob.glob(os.path.expanduser(f'~/.claude/projects/*/{glob.escape(sys.argv[1])}/subagents/agent-*.jsonl')):
     try:
-        if os.path.getmtime(f) < cutoff:
-            continue
-        model, tokens, usd, cwd = agent(f)
+        model, _, cost, _ = agent(f)
     except OSError:
         continue
-    if not model:
-        continue
-    try:
-        meta = json.load(open(re.sub(r'\.jsonl$', '.meta.json', f)))
-    except (OSError, ValueError):
-        meta = {}
-    print(json.dumps({'type': meta.get('agentType', '?'), 'tier': tier(model), 'usd': round(usd, 4), 'tokens': tokens,
-                      'project': os.path.basename(cwd.split('/.claude/worktrees/')[0]), 'desc': meta.get('description', '')[:60]}))
+    if model:
+        usd, agents = usd + cost, agents + 1
+print(json.dumps({'usd': round(usd, 4), 'agents': agents}))

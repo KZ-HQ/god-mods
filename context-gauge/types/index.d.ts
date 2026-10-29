@@ -9,8 +9,11 @@ export type GaugeSnap = {
 
 export type TurnCost = { usd: number; seconds: number }
 
+// What this session's subagents cost: list-price estimate from their transcripts
+export type AgentCost = { usd: number; agents: number }
+
 declare module 'claude-code' {
   interface PluginState {
-    'context-gauge': { snap: GaugeSnap | null; lastTurn: TurnCost | null; isHidden: boolean }
+    'context-gauge': { snap: GaugeSnap | null; lastTurn: TurnCost | null; isHidden: boolean; agentCost: AgentCost | null }
   }
 }

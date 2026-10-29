@@ -17,8 +17,7 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 
 | Mod | What it does |
 | --- | --- |
-| agent-spend | `/spend [days] [here]`: pane of subagent spend by model and agent type, with the costliest agents, from subagent transcripts |
-| context-gauge | Band above the prompt: context fill, last turn's cost, session cost and rate limits; `/gauge` toggles it |
+| context-gauge | Band above the prompt: context fill, last turn's cost, session cost plus this session's subagent cost (`+ agents $…`, a list-price estimate from subagent transcripts), and rate limits; `/gauge` toggles it |
 | long-turn-notify | macOS notification when a long turn finishes or Claude needs your input, in terminal sessions |
 | merge-gate | Holds `gh pr merge` until CI passes on the PR head; `/gate` runs the project's CI steps locally |
 | mod-stats | `/mod-stats [days]`: what each mod did, cost and saved, and how often it faulted |
