@@ -22,7 +22,7 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 | merge-gate | Holds `gh pr merge` until CI passes on the PR head; `/gate` runs the project's CI steps locally |
 | mod-stats | `/mod-stats [days] [here]`: what each mod did, cost and saved; labels each active, stale or dormant (loaded but never used: a removal candidate); hook time per mod; tokens mods added to context. Also watches the other mods' hooks and records any that fail, time out or are refused, toasting at a mod's third fault in a session. At session start it toasts any mod newly dormant for a week (secret-scrubber exempt) or with a hook call over 2s. It sees only mods beneath it: put `mod-stats@god-mods` first in `enabledPlugins` |
 | next-steps | Suggests 2–3 likely next prompts after each turn; press 1/2/3 to draft one; `/next off` |
-| prompt-shaper | Expands your shorthand and attaches git state to each prompt; adds a project-toolchain note to the system prompt |
+| prompt-shaper | Attaches git state to a prompt when it changed; adds a project-toolchain note to the system prompt. Records each time Claude runs `git status` itself, so `/mod-stats` shows whether the note saves those checks |
 | secret-scrubber | Masks API keys and tokens in tool output, and refuses to write them into source files |
 | test-on-edit | When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt |
 

@@ -150,7 +150,18 @@ describe('health', () => {
       L({ mod: 'prompt-shaper', event: 'toolchain', chars: 400 }),
       L({ mod: 'test-on-edit', event: 'delivered', chars: 800 }),
     ].join('\n')
-    expect(report(parse(text), 0, 7)).toMatch(/Tokens added to Claude's context: prompt-shaper ~1k, test-on-edit ~200/)
+    const out = report(parse(text), 0, 7)
+    expect(out).toMatch(/Tokens added to Claude's context: prompt-shaper ~1k, test-on-edit ~200/)
+    expect(out).toMatch(/toolchain in 1 sessions \(~100 tokens each\)/)
+  })
+
+  test("prompt-shaper: counts Claude's own git checks and how many came after a note", async () => {
+    const text = [
+      L({ mod: 'prompt-shaper', event: 'inject', chars: 40, git: true }),
+      L({ mod: 'prompt-shaper', event: 'gitcheck', noted: false }),
+      L({ mod: 'prompt-shaper', event: 'gitcheck', noted: true }),
+    ].join('\n')
+    expect(report(parse(text), 0, 7)).toMatch(/1 git notes \(~10 tokens added\) .* Claude checked git itself 2×, 1 after a note/)
   })
 })
 
