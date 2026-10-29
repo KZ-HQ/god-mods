@@ -14,13 +14,13 @@
       "name": "prompt-shaper",
       "source": "./prompt-shaper",
       "description": "Attaches git state to a prompt when it changed, and adds a stable project-toolchain note to the system prompt",
-      "version": "0.4.0"
+      "version": "0.4.1"
     },
     {
       "name": "long-turn-notify",
       "source": "./long-turn-notify",
       "description": "macOS notification when a long turn finishes, or when Claude needs your input, in terminal sessions",
-      "version": "0.4.1"
+      "version": "0.5.0"
     },
     {
       "name": "merge-gate",
