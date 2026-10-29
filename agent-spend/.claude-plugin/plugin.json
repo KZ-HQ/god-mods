@@ -1,9 +1,0 @@
-{
-  "name": "agent-spend",
-  "version": "0.1.0",
-  "description": "/spend [days] [here]: subagent spend by model and agent type, and the costliest agents, in a pane",
-  "author": {
-    "name": "KeithZhu"
-  },
-  "types": "./types/index.d.ts"
-}

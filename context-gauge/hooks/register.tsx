@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On, Register, SessionUsage } from 'claude-code'
 
-import type { GaugeSnap } from '../types'
+import type { AgentCost, GaugeSnap } from '../types'
 
 // Thresholds, in percent of the context window
 const WARN_AT = 60
@@ -14,6 +14,7 @@ const HIDDEN_KEY = 'hidden'
 const snap = atom({ plugin: 'context-gauge', key: 'snap' } as const, null)
 const lastTurn = atom({ plugin: 'context-gauge', key: 'lastTurn' } as const, null)
 const isHidden = atom({ plugin: 'context-gauge', key: 'isHidden' } as const, false)
+const agentCost = atom({ plugin: 'context-gauge', key: 'agentCost' } as const, null)
 
 const toSnap = (u: Pick<SessionUsage, 'context' | 'rateLimits' | 'cost'>): GaugeSnap => ({
   percent: u.context.percent ?? null,
@@ -122,6 +123,18 @@ function usd(n: number): string {
 }
 // </money>
 
+// Session cost leaves out subagents, which bill in their own transcripts; hooks/agents.py prices those
+async function scanAgents($: EngineInterface): Promise<void> {
+  const session = await $.session.id().catch(() => '')
+  if (!session) return
+  const r = await $.process.run(['python3', '-I', `${$.plugin.root}/hooks/agents.py`, session], { timeoutMs: 10_000 }).catch(() => null)
+  if (r?.exitCode !== 0) return
+  try {
+    const a = JSON.parse(r.stdout) as AgentCost
+    if (typeof a.usd === 'number' && typeof a.agents === 'number') await update($, agentCost, () => a)
+  } catch {}
+}
+
 export const register: Register = on => {
   // Baseline for the running main-loop turn
   let turnStartUsd = 0
@@ -136,6 +149,7 @@ export const register: Register = on => {
     await update($, snap, () => toSnap(usage))
     // /gauge's choice carries over to new sessions
     if ((await $.store.get(HIDDEN_KEY)) === true) await update($, isHidden, () => true)
+    void scanAgents($)
 
     return next(e)
   })
@@ -168,6 +182,7 @@ export const register: Register = on => {
     const nowUsd = (await $.session.usage()).cost?.usd ?? turnStartUsd
     const seconds = Math.round(((await $.clock.now()) - turnStartedAt) / 1000)
     await update($, lastTurn, () => ({ usd: Math.max(0, nowUsd - turnStartUsd), seconds }))
+    void scanAgents($)
 
     return done
   })
@@ -186,6 +201,7 @@ export const register: Register = on => {
     if (e.props.hasSurvey || s === null || (await read($, isHidden))) return next(e)
 
     const turn = await read($, lastTurn)
+    const agents = await read($, agentCost)
     const { Box, Text } = $.ui.resolve(e)
 
     const pct = s.percent
@@ -198,7 +214,7 @@ export const register: Register = on => {
     parts.push(pct === null ? 'ctx —' : `${pct}% · ${k(s.tokens ?? 0)}/${k(s.window)}`)
     if (isBig) parts.push('over 400k: /compact to save usage')
     if (turn) parts.push(`last turn ${usd(turn.usd)} · ${turn.seconds}s`)
-    if (s.usd !== null) parts.push(`session ${usd(s.usd)}`)
+    if (s.usd !== null) parts.push(`session ${usd(s.usd)}${agents?.agents ? ` + agents ${usd(agents.usd)}` : ''}`)
     if (s.fiveHour !== null) parts.push(`5h ${Math.round(s.fiveHour)}%`)
     if (s.weekly !== null) parts.push(`7d ${Math.round(s.weekly)}%`)
 

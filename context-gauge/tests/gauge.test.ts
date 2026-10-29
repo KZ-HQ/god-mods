@@ -140,3 +140,34 @@ describe('last turn', () => {
     expect(await ui.find({ type: 'Text', text: /last turn \$0\.250 · 7s/ })).toBeDefined()
   })
 })
+
+describe('agents', () => {
+  const run = async ($: Parameters<Parameters<typeof test>[1]>[0], on: On, stdout: string) => {
+    on('session.measure', (_$, e) => ({ changed: e.changed }))
+    on('session.cwd', () => ({ value: '/r' }))
+    on('session.id', () => ({ value: 's1' }) as never)
+    on('clock.now', () => ({ value: 0 }))
+    on('session.usage', () => ({ value: { cost: { usd: 1 } } }) as never)
+    on('process.run', (_$, e) => ({ value: { exitCode: 0, stdout: e.argv.some(a => a.endsWith('agents.py')) ? stdout : '', stderr: '' } }) as never)
+    on('ui.render', { component: 'AbovePrompt' }, ($, e) => h($.ui.resolve(e).Box, {}) as ReturnType<typeof h> & object)
+    on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+    await $.turn.start({ text: 'go', turnId: 't1' })
+    await $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+    await $.session.measure(measure(40))
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+
+    return $.ui.mount({ plugin: 'context-gauge', surface: 'terminal', ...BAND })
+  }
+
+  test("adds this session's subagent cost beside session cost", async ($, on) => {
+    const ui = await run($, on, '{"usd": 1.1, "agents": 3}\n')
+    expect(await ui.find({ type: 'Text', text: /session \$1\.50 \+ agents \$1\.10/ })).toBeDefined()
+  })
+
+  test('shows no agents figure when no subagent ran', async ($, on) => {
+    const ui = await run($, on, '{"usd": 0, "agents": 0}\n')
+    expect(await ui.find({ type: 'Text', text: /agents/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /session \$1\.50/ })).toBeDefined()
+  })
+})
