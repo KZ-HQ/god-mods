@@ -17,6 +17,7 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 
 | Mod | What it does |
 | --- | --- |
+| agentviz | Streams the session to an [AgentViz](https://github.com/KZ-HQ/threeMono/tree/main/apps/agentviz) relay as a live 3D graph: you and Claude, each prompt as a task, every tool call and result, subagents and their own tool calls, tokens and cost. `/agentviz` opens a pane with the status and the link to this session's view; `/agentviz off` / `on` pauses and resumes. Sends nothing until a relay answers, queues while it is down. Settings in `/config`: relay URL (default `http://localhost:8787`), ingest token, and `names` to send tool names and counts only, without prompt, answer or tool-input text |
 | compact-carry | After a compaction, appends a short note (under ~400 tokens): the branch, the last request (first 200 chars), open todos and up to 12 files recently read or edited. Records the note's size and how many carried files Claude re-read in the 5 turns after, so `/mod-stats` shows whether it helps |
 | context-gauge | Band above the prompt: context fill, last turn's cost, session cost plus this session's subagent cost (`+ agents $…`, a list-price estimate from subagent transcripts), and rate limits. In the last 10 minutes of the 1h prompt cache it counts down, and once lapsed it shows what the next message pays to re-write it; `/gauge` toggles it. Tallies tool-result size per file (~chars/4); the band names the biggest, a one-time toast fires when one file passes 30k tokens or 20% of context, and `/hogs` lists the top 10 |
 | long-turn-notify | macOS notification when a long turn finishes, a turn dies on an API error, or Claude needs your input, in terminal sessions; records failed tool calls and API errors (kinds only) |
@@ -27,6 +28,16 @@ Install the mods you want one by one. Restart Claude Code (a full restart; `/rel
 | rule-score | Scores how often Claude follows the rules in your loaded CLAUDE.md files that tool calls can check ("use `a` instead of `b`", "never run `x`", "prefer the Read tool over `cat`", "run tests after edits"); other rules are skipped. Tallies per session in its store; a rule broken 3+ times, in half its checks, across 2+ sessions is chronically ignored: a session-start toast names it (once a week per rule) as a candidate for a hook, and Claude gets a one-line reminder of it in its context while it is loaded. `/rules` shows the full scorecard |
 | secret-scrubber | Masks API keys and tokens in tool output, and refuses to write them into source files |
 | test-on-edit | When Claude's answer ends, runs the tests of the files it edited; failures go to Claude with your next prompt; refuses deleting or disabling tests (skip, xfail, only), flags dropped cases |
+
+## AgentViz
+
+`agentviz` sends this session's activity to an AgentViz relay, which draws it live in 3D. Start the relay from the [threeMono](https://github.com/KZ-HQ/threeMono) repo:
+
+```bash
+npm install && npm start      # UI and relay on http://localhost:8787
+```
+
+Install the mod, start a Claude Code session, and run `/agentviz` for the link. Each session is a separate run in the relay's run picker. Unlike the metrics rows, this mod sends text off the session: with the default `summaries` setting, the first line of each prompt and answer and a short summary of each tool call (the Bash description or command, a file's name, a search pattern; never file contents). It goes only to the relay URL you set. Choose `names` in `/config` to send tool names and counts only.
 
 ## Plugin order
 

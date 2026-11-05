@@ -63,6 +63,12 @@
       "source": "./rule-score",
       "description": "/rules: how often Claude follows the checkable rules in your CLAUDE.md files, flagging chronically ignored ones as hook candidates",
       "version": "0.1.0"
+    },
+    {
+      "name": "agentviz",
+      "source": "./agentviz",
+      "description": "Streams each Claude Code session to an AgentViz relay as a live 3D graph: Claude, subagents, tools, your prompts; /agentviz opens a pane with the link",
+      "version": "0.1.0"
     }
   ],
   "description": "Claude Code mods by KeithZhu"
