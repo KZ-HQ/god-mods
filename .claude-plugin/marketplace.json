@@ -5,12 +5,6 @@
   },
   "plugins": [
     {
-      "name": "compact-carry",
-      "source": "./compact-carry",
-      "description": "Carries recent files, the last request, open todos and the branch across a compaction as a short note",
-      "version": "0.1.0"
-    },
-    {
       "name": "context-gauge",
       "source": "./context-gauge",
       "description": "Band above the prompt: context fill, last turn's cost, session and subagent cost and rate limits; /gauge toggles it",
@@ -57,18 +51,6 @@
       "source": "./mod-stats",
       "description": "/mod-stats [days] [here]: what each mod did, cost and saved, active/stale/dormant, hook time and faults; watches the other mods' hooks for faults",
       "version": "0.7.1"
-    },
-    {
-      "name": "rule-score",
-      "source": "./rule-score",
-      "description": "/rules: how often Claude follows the checkable rules in your CLAUDE.md files, flagging chronically ignored ones as hook candidates",
-      "version": "0.1.0"
-    },
-    {
-      "name": "agentviz",
-      "source": "./agentviz",
-      "description": "Streams each Claude Code session to an AgentViz relay as a live 3D graph: Claude, subagents, tools, your prompts; /agentviz opens a pane with the link",
-      "version": "0.1.0"
     }
   ],
   "description": "Claude Code mods by KeithZhu"
